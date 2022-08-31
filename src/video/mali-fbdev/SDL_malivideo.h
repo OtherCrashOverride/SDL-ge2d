@@ -16,13 +16,31 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#include "mali.h"
+#include "ion.h"
+#include "ge2d.h"
+#include "ge2d_cmd.h"
+
 typedef struct SDL_DisplayData
 {
     struct fbdev_window native_display;
+    NativePixmapType (*egl_create_pixmap_ID_mapping)(mali_pixmap *);
+
+    int ge2d_fd, ion_fd;
 } SDL_DisplayData;
 
 typedef struct SDL_WindowData
 {
+    // A pixmap is backed by multiple ION allocated backbuffers
+    mali_pixmap pixmap;
+    NativePixmapType pixmap_handle;
+
+    struct {
+        int shared_fd;
+        int handle;
+    } ion_surface[3];
+
+    // The created EGL Surface is backed by a mali pixmap
     EGLSurface egl_surface;
 } SDL_WindowData;
 

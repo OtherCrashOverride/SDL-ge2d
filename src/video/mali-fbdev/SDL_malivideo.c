@@ -104,6 +104,17 @@ MALI_VideoInit(_THIS)
         return SDL_SetError("mali-fbdev: Could not open framebuffer device");
     }
 
+    data->ion_fd = open("/dev/ion", O_RDWR, 0);
+    if (data->ion_fd < 0) {
+        return SDL_SetError("mali-fbdev: Could not open ion device");
+    }
+
+    data->ge2d_fd = open("/dev/ge2d", O_RDWR, 0);
+    if (data->ge2d_fd < 0) {
+        close(data->ion_fd);
+        return SDL_SetError("mali-fbdev: Could not open ge2d device");
+    }
+
     if (ioctl(fd, FBIOGET_VSCREENINFO, &vinfo) < 0) {
         MALI_VideoQuit(_this);
         return SDL_SetError("mali-fbdev: Could not get framebuffer information");
@@ -151,8 +162,15 @@ MALI_VideoInit(_THIS)
 void
 MALI_VideoQuit(_THIS)
 {
-    /* Clear the framebuffer and ser cursor on again */
+    SDL_DisplayData *displaydata = (SDL_DisplayData*)_this->driverdata;
     int fd = open("/dev/tty", O_RDWR);
+
+    /* Cleanup after ion and ge2d */
+    close(displaydata->ion_fd);
+    close(displaydata->ge2d_fd);
+    //TODO:: Destroy the other buffers...
+
+    /* Clear the framebuffer and ser cursor on again */
     ioctl(fd, VT_ACTIVATE, 5);
     ioctl(fd, VT_ACTIVATE, 1);
     close(fd);
@@ -175,6 +193,79 @@ int
 MALI_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
 {
     return 0;
+}
+
+static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
+{
+    struct ion_fd_data ion_data;
+    struct ion_allocation_data allocation_data;
+    int i, io;
+    EGLSurface *surface;
+
+    _this->egl_data->egl_surfacetype = EGL_PIXMAP_BIT;
+    if (SDL_EGL_ChooseConfig(_this) != 0) {
+        return EGL_NO_SURFACE;
+    }
+
+    if (_this->gl_config.framebuffer_srgb_capable) {
+        {
+            SDL_SetError("EGL implementation does not support sRGB system framebuffers");
+            return EGL_NO_SURFACE;
+        }
+    }
+
+    // Populate pixmap definitions
+    windowdata->pixmap.width = displaydata->native_display.width;
+    windowdata->pixmap.height = displaydata->native_display.height;
+    for (i = 0; i < 3; i++)
+    {
+        windowdata->pixmap.planes[i].stride = MALI_ALIGN(windowdata->pixmap.width * 4, 64);
+        windowdata->pixmap.planes[i].size = 
+            windowdata->pixmap.planes[i].stride * windowdata->pixmap.height;
+        windowdata->pixmap.planes[i].offset = 0;
+        windowdata->pixmap.format = MALI_FORMAT_ARGB8888; // appears to be 888X
+
+        allocation_data = (struct ion_allocation_data){
+            .len = windowdata->pixmap.planes[i].size,
+            .heap_id_mask = (1 << ION_HEAP_TYPE_DMA),
+            .flags = 0
+        };
+
+        io = ioctl(displaydata->ion_fd, ION_IOC_ALLOC, &allocation_data);
+        if (io != 0)
+        {
+            SDL_EGL_SetError("Unable to create backing ION buffers", "ION_IOC_ALLOC");
+            return EGL_NO_SURFACE;
+        }
+
+        ion_data = (struct ion_fd_data){
+            .handle = allocation_data.handle
+        };
+
+        io = ioctl(displaydata->ion_fd, ION_IOC_SHARE, &ion_data);
+        if (io != 0)
+        {
+            SDL_EGL_SetError("Unable to create backing ION buffers", "ION_IOC_SHARE");
+            return EGL_NO_SURFACE;
+        }
+
+        windowdata->ion_surface[i].handle = allocation_data.handle;
+        windowdata->ion_surface[i].shared_fd = ion_data.fd;
+        windowdata->pixmap.handles[i] = ion_data.fd;
+    }
+
+    windowdata->pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&windowdata->pixmap);
+    SDL_Log("Created pixmap handle %p\n", windowdata->pixmap_handle);
+    
+    surface = _this->egl_data->eglCreatePixmapSurface(
+            _this->egl_data->egl_display,
+            _this->egl_data->egl_config,
+            windowdata->pixmap_handle, NULL);
+    if (surface == EGL_NO_SURFACE) {
+        SDL_EGL_SetError("unable to create an EGL window surface", "eglCreatePixmapSurface");
+    }
+
+    return surface;
 }
 
 int
@@ -203,8 +294,17 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
             return -1;
         }
     }
-    windowdata->egl_surface = SDL_EGL_CreateSurface(_this, (NativeWindowType) &displaydata->native_display);
 
+    /* Acquire handle to internal pixmap routines */
+    if (!displaydata->egl_create_pixmap_ID_mapping) {
+        displaydata->egl_create_pixmap_ID_mapping = SDL_EGL_GetProcAddress(_this, "egl_create_pixmap_ID_mapping");
+        if (!displaydata->egl_create_pixmap_ID_mapping) {
+            MALI_VideoQuit(_this);
+            return SDL_SetError("mali-fbdev: egl_create_pixmap_ID_mapping not exposed by EGL driver.");
+        }
+    }
+
+    windowdata->egl_surface = MALI_EGL_CreatePixmapSurface(_this, windowdata, displaydata);
     if (windowdata->egl_surface == EGL_NO_SURFACE) {
         MALI_VideoQuit(_this);
         return SDL_SetError("mali-fbdev: Can't create EGL window surface");

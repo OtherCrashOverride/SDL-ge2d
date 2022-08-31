@@ -444,6 +444,7 @@ SDL_EGL_LoadLibraryOnly(_THIS, const char *egl_path)
     LOAD_FUNC(eglGetConfigAttrib);
     LOAD_FUNC(eglCreateContext);
     LOAD_FUNC(eglDestroyContext);
+    LOAD_FUNC(eglCreatePixmapSurface);
     LOAD_FUNC(eglCreatePbufferSurface);
     LOAD_FUNC(eglCreateWindowSurface);
     LOAD_FUNC(eglDestroySurface);

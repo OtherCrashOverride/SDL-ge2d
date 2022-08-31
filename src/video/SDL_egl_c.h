@@ -68,6 +68,11 @@ typedef struct SDL_EGL_VideoData
     
     EGLBoolean(EGLAPIENTRY *eglDestroyContext) (EGLDisplay dpy, EGLContext ctx);
     
+    EGLSurface(EGLAPIENTRY *eglCreatePixmapSurface) (EGLDisplay dpy,
+                                         EGLConfig config,
+                                         NativePixmapType pixmap,
+                                         const EGLint * attrib_list);
+
     EGLSurface(EGLAPIENTRY *eglCreatePbufferSurface)(EGLDisplay dpy, EGLConfig config,
                                                      EGLint const* attrib_list);
 

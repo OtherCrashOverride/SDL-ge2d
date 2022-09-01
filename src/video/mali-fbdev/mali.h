@@ -19,7 +19,6 @@
 #include <stdint.h>
 
 typedef struct mali_plane {
-    // TODO:: check 32bit gondul for sizes
     unsigned long stride;
     unsigned long size;
     unsigned long offset;
@@ -30,8 +29,7 @@ typedef struct mali_pixmap {
 
     mali_plane planes[3];
     
-    // TODO:: check 32bit gondul for sizes
-    uint64_t format; //see 0x004e3c28...
+    unsigned long format; //see 0x004e3c28...
     int handles[3]; //seems to just be fds, see 0x004ec14c...
 } mali_pixmap;
 

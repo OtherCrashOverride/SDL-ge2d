@@ -28,8 +28,8 @@ typedef struct mali_pixmap {
     int width, height; 
 
     mali_plane planes[3];
-    
-    unsigned long format; //see 0x004e3c28...
+
+    uint64_t format; //see 0x004e3c28...
     int handles[3]; //seems to just be fds, see 0x004ec14c...
 } mali_pixmap;
 

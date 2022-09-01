@@ -25,6 +25,7 @@ typedef struct SDL_DisplayData
 {
     struct fbdev_window native_display;
     NativePixmapType (*egl_create_pixmap_ID_mapping)(mali_pixmap *);
+    NativePixmapType (*egl_destroy_pixmap_ID_mapping)(int id);
 
     int ge2d_fd, ion_fd;
 } SDL_DisplayData;

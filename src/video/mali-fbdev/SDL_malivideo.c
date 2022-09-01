@@ -162,7 +162,7 @@ MALI_VideoInit(_THIS)
 void
 MALI_VideoQuit(_THIS)
 {
-    SDL_DisplayData *displaydata = (SDL_DisplayData*)_this->driverdata;
+    SDL_DisplayData *displaydata = (SDL_DisplayData*)SDL_GetDisplayDriverData(0);
     int fd = open("/dev/tty", O_RDWR);
 
     /* Cleanup after ion and ge2d */
@@ -273,7 +273,6 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
 {
     SDL_WindowData *windowdata;
     SDL_DisplayData *displaydata;
-
     displaydata = SDL_GetDisplayDriverData(0);
 
     /* Allocate window internal data */
@@ -298,9 +297,11 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
     /* Acquire handle to internal pixmap routines */
     if (!displaydata->egl_create_pixmap_ID_mapping) {
         displaydata->egl_create_pixmap_ID_mapping = SDL_EGL_GetProcAddress(_this, "egl_create_pixmap_ID_mapping");
-        if (!displaydata->egl_create_pixmap_ID_mapping) {
+        displaydata->egl_destroy_pixmap_ID_mapping = SDL_EGL_GetProcAddress(_this, "egl_destroy_pixmap_ID_mapping");
+        if (!displaydata->egl_create_pixmap_ID_mapping || 
+            !displaydata->egl_destroy_pixmap_ID_mapping) {
             MALI_VideoQuit(_this);
-            return SDL_SetError("mali-fbdev: egl_create_pixmap_ID_mapping not exposed by EGL driver.");
+            return SDL_SetError("mali-fbdev: One or more required libmali internal not exposed.");
         }
     }
 
@@ -324,16 +325,41 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
 void
 MALI_DestroyWindow(_THIS, SDL_Window * window)
 {
-    SDL_WindowData *data;
+    int i, io;
+    SDL_WindowData *windowdata;
+    SDL_DisplayData *displaydata;
+    struct ion_handle_data ionHandleData;
 
-    data = window->driverdata;
-    if (data) {
-        if (data->egl_surface != EGL_NO_SURFACE) {
-            SDL_EGL_DestroySurface(_this, data->egl_surface);
-            data->egl_surface = EGL_NO_SURFACE;
+    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Destroying MALI window.");
+
+    windowdata = window->driverdata;
+    displaydata = SDL_GetDisplayDriverData(0);
+
+    for (i = 0; i < 3; i++) {
+        close(windowdata->ion_surface[i].shared_fd);
+        ionHandleData = (struct ion_handle_data){
+            .handle = windowdata->ion_surface[i].handle
+        };
+
+        io = ioctl(displaydata->ion_fd, ION_IOC_FREE, &ionHandleData);
+        if (io != 0)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "ION_IOC_FREE failed.");
         }
-        SDL_free(data);
+
+        windowdata->ion_surface[i].shared_fd = -1;
+        windowdata->ion_surface[i].handle = 0;
     }
+
+    if (windowdata) {
+        if (windowdata->egl_surface != EGL_NO_SURFACE) {
+            SDL_EGL_DestroySurface(_this, windowdata->egl_surface);
+            windowdata->egl_surface = EGL_NO_SURFACE;
+        }
+        SDL_free(windowdata);
+    }
+
+    displaydata->egl_destroy_pixmap_ID_mapping((unsigned long)windowdata->pixmap_handle);
     window->driverdata = NULL;
 }
 

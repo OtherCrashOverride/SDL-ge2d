@@ -43,6 +43,7 @@ typedef struct SDL_WindowData
 
     // A pixmap is backed by multiple ION allocated backbuffers
     struct {
+        EGLSyncKHR fence;
         EGLSurface egl_surface;
         NativePixmapType pixmap_handle;
         mali_pixmap pixmap;

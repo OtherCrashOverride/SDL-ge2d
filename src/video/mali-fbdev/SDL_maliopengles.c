@@ -95,6 +95,8 @@ void MALI_Rotate_Blit(_THIS, SDL_Window *window, int target, int rotation)
 int MALI_TripleBufferingThread(void *data)
 {
     unsigned int page;
+    EGLSyncKHR fence;
+    EGLDisplay dpy;
 	SDL_WindowData *windowdata;
     SDL_DisplayData *displaydata;
     SDL_VideoDevice* _this;
@@ -116,9 +118,16 @@ int MALI_TripleBufferingThread(void *data)
 		windowdata->current_page = windowdata->new_page;
 		windowdata->new_page = page;
 
-		/* flip display */
+        /* Acquire useful bits */
+        dpy = _this->egl_data->egl_display;
+        fence = windowdata->surface[windowdata->current_page].fence;
+
+		/* wait for fence and flip display */
+        _this->egl_data->eglClientWaitSyncKHR(dpy, fence, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, (EGLTimeKHR)1e+8);
+        
+        /* wait for vsync and flip */
         ioctl(displaydata->fb_fd, FBIO_WAITFORVSYNC, 0);
-        MALI_Rotate_Blit(data, _this->windows, page, Rotation_0);
+        MALI_Rotate_Blit(data, _this->windows, windowdata->current_page, Rotation_0);
 	}
 
 	SDL_UnlockMutex(windowdata->triplebuf_mutex);
@@ -135,14 +144,15 @@ void MALI_TripleBufferInit(SDL_WindowData *windowdata)
 void MALI_TripleBufferStop(_THIS)
 {
     SDL_WindowData *windowdata = (SDL_WindowData*)_this->windows->driverdata;
+    if (windowdata) {
+        SDL_LockMutex(windowdata->triplebuf_mutex);
+        windowdata->triplebuf_thread_stop = 1;
+        SDL_CondSignal(windowdata->triplebuf_cond);
+        SDL_UnlockMutex(windowdata->triplebuf_mutex);
 
-	SDL_LockMutex(windowdata->triplebuf_mutex);
-	windowdata->triplebuf_thread_stop = 1;
-	SDL_CondSignal(windowdata->triplebuf_cond);
-	SDL_UnlockMutex(windowdata->triplebuf_mutex);
-
-	SDL_WaitThread(windowdata->triplebuf_thread, NULL);
-	windowdata->triplebuf_thread = NULL;
+        SDL_WaitThread(windowdata->triplebuf_thread, NULL);
+        windowdata->triplebuf_thread = NULL;
+    }
 }
 
 void MALI_TripleBufferQuit(_THIS)
@@ -174,7 +184,8 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
     windowdata->new_page = windowdata->flip_page;
     windowdata->flip_page = page;
 
-    r = SDL_EGL_MakeCurrent(_this, windowdata->surface[windowdata->new_page].egl_surface, _this->current_glctx);
+    r = SDL_EGL_MakeCurrent(_this, windowdata->surface[windowdata->flip_page].egl_surface, _this->current_glctx);
+    windowdata->surface[page].fence = _this->egl_data->eglCreateSyncKHR(_this->egl_data->egl_display, EGL_SYNC_FENCE_KHR, NULL);
 
     SDL_CondSignal(windowdata->triplebuf_cond);
     SDL_UnlockMutex(windowdata->triplebuf_mutex);
@@ -193,7 +204,6 @@ MALI_GLES_MakeCurrent(_THIS, SDL_Window * window, SDL_GLContext context)
         return SDL_EGL_MakeCurrent(_this, EGL_NO_SURFACE, context);
     }
 }
-
 
 SDL_GLContext
 MALI_GLES_CreateContext(_THIS, SDL_Window * window)

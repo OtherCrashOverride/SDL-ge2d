@@ -6,15 +6,7 @@
 #include "SDL_malivideo.h"
 
 /* EGL implementation of SDL OpenGL support */
-
-int
-MALI_GLES_LoadLibrary(_THIS, const char *path)
-{
-    return SDL_EGL_LoadLibrary(_this, path, EGL_DEFAULT_DISPLAY, 0);
-}
-
-static void
-MALI_Rotate_Blit(_THIS, SDL_Window *window, int rotation)
+void MALI_Rotate_Blit(_THIS, SDL_Window *window, int target, int rotation)
 {
     int io;
     static struct ge2d_para_s blitRect = {};
@@ -71,9 +63,9 @@ MALI_Rotate_Blit(_THIS, SDL_Window *window, int rotation)
     blit_config.src_para.width = window->w;
     blit_config.src_para.height = window->h;
 
-    blit_config.src_planes[0].shared_fd = windowdata->ion_surface[0].shared_fd;
-    blit_config.src_planes[0].w = windowdata->pixmap.width;
-    blit_config.src_planes[0].h = windowdata->pixmap.height;
+    blit_config.src_planes[0].shared_fd = windowdata->surface[target].shared_fd;
+    blit_config.src_planes[0].w = windowdata->surface[target].pixmap.planes[0].stride / 4;
+    blit_config.src_planes[0].h = windowdata->surface[target].pixmap.height;
 
     io = ioctl(displaydata->ge2d_fd, GE2D_CONFIG_EX_ION, &blit_config);
     if (io < 0)
@@ -84,8 +76,8 @@ MALI_Rotate_Blit(_THIS, SDL_Window *window, int rotation)
 
     blitRect.src1_rect.x = 0;
     blitRect.src1_rect.y = 0;
-    blitRect.src1_rect.w = windowdata->pixmap.width;
-    blitRect.src1_rect.h = windowdata->pixmap.height;
+    blitRect.src1_rect.w = windowdata->surface[target].pixmap.width;
+    blitRect.src1_rect.h = windowdata->surface[target].pixmap.height;
 
     blitRect.dst_rect.x = 0;
     blitRect.dst_rect.y = 0;
@@ -100,23 +92,114 @@ MALI_Rotate_Blit(_THIS, SDL_Window *window, int rotation)
     }
 }
 
+int MALI_TripleBufferingThread(void *data)
+{
+    unsigned int page;
+	SDL_WindowData *windowdata;
+    SDL_DisplayData *displaydata;
+    SDL_VideoDevice* _this;
+    
+    _this = (SDL_VideoDevice*)data;
+    windowdata = (SDL_WindowData *)_this->windows->driverdata;
+    displaydata = SDL_GetDisplayDriverData(0);
+
+	SDL_LockMutex(windowdata->triplebuf_mutex);
+	SDL_CondSignal(windowdata->triplebuf_cond);
+
+	for (;;) {
+        SDL_CondWait(windowdata->triplebuf_cond, windowdata->triplebuf_mutex);
+		if (windowdata->triplebuf_thread_stop)
+			break;
+
+		/* Flip the most recent back buffer with the front buffer */
+		page = windowdata->current_page;
+		windowdata->current_page = windowdata->new_page;
+		windowdata->new_page = page;
+
+		/* flip display */
+        ioctl(displaydata->fb_fd, FBIO_WAITFORVSYNC, 0);
+        MALI_Rotate_Blit(data, _this->windows, page, Rotation_0);
+	}
+
+	SDL_UnlockMutex(windowdata->triplebuf_mutex);
+	return 0;
+}
+
+void MALI_TripleBufferInit(SDL_WindowData *windowdata)
+{
+	windowdata->triplebuf_mutex = SDL_CreateMutex();
+	windowdata->triplebuf_cond = SDL_CreateCond();
+	windowdata->triplebuf_thread = NULL;
+}
+
+void MALI_TripleBufferStop(_THIS)
+{
+    SDL_WindowData *windowdata = (SDL_WindowData*)_this->windows->driverdata;
+
+	SDL_LockMutex(windowdata->triplebuf_mutex);
+	windowdata->triplebuf_thread_stop = 1;
+	SDL_CondSignal(windowdata->triplebuf_cond);
+	SDL_UnlockMutex(windowdata->triplebuf_mutex);
+
+	SDL_WaitThread(windowdata->triplebuf_thread, NULL);
+	windowdata->triplebuf_thread = NULL;
+}
+
+void MALI_TripleBufferQuit(_THIS)
+{
+    SDL_WindowData *windowdata = (SDL_WindowData*)_this->windows->driverdata;
+
+	if (windowdata->triplebuf_thread)
+		MALI_TripleBufferStop(_this);
+	SDL_DestroyMutex(windowdata->triplebuf_mutex);
+	SDL_DestroyCond(windowdata->triplebuf_cond);
+}
+
+int MALI_GLES_LoadLibrary(_THIS, const char *path)
+{
+    return SDL_EGL_LoadLibrary(_this, path, EGL_DEFAULT_DISPLAY, 0);
+}
+
 int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
 {
     int r;
-    static void (*gl_finish)() = NULL;
+    unsigned int page;
+    SDL_WindowData *windowdata;
 
-    if (!gl_finish) {
-        gl_finish = SDL_EGL_GetProcAddress(_this, "glFinish");
-    }
+    windowdata = (SDL_WindowData*)_this->windows->driverdata;
 
-    gl_finish();
-    r = SDL_EGL_SwapBuffers(_this, ((SDL_WindowData *) window->driverdata)->egl_surface);
-    MALI_Rotate_Blit(_this, window, Rotation_0);
+    SDL_LockMutex(windowdata->triplebuf_mutex);
+
+    page = windowdata->new_page;
+    windowdata->new_page = windowdata->flip_page;
+    windowdata->flip_page = page;
+
+    r = SDL_EGL_MakeCurrent(_this, windowdata->surface[windowdata->new_page].egl_surface, _this->current_glctx);
+
+    SDL_CondSignal(windowdata->triplebuf_cond);
+    SDL_UnlockMutex(windowdata->triplebuf_mutex);
 
     return r;
 }
 
-SDL_EGL_CreateContext_impl(MALI)
-SDL_EGL_MakeCurrent_impl(MALI)
+int
+MALI_GLES_MakeCurrent(_THIS, SDL_Window * window, SDL_GLContext context)
+{
+    SDL_WindowData *windowdata;
+    if (window) {
+        windowdata = window->driverdata;
+        return SDL_EGL_MakeCurrent(_this, windowdata->surface[windowdata->current_page].egl_surface, context);
+    } else {
+        return SDL_EGL_MakeCurrent(_this, EGL_NO_SURFACE, context);
+    }
+}
+
+
+SDL_GLContext
+MALI_GLES_CreateContext(_THIS, SDL_Window * window)
+{
+    SDL_WindowData *windowdata = (SDL_WindowData *)window->driverdata;
+    return SDL_EGL_CreateContext(_this, windowdata->surface[windowdata->current_page].egl_surface);
+}
 
 #endif /* SDL_VIDEO_DRIVER_MALI && SDL_VIDEO_OPENGL_EGL */

@@ -23,26 +23,34 @@
 
 typedef struct SDL_DisplayData
 {
+    struct fb_var_screeninfo vinfo;
     struct fbdev_window native_display;
     NativePixmapType (*egl_create_pixmap_ID_mapping)(mali_pixmap *);
     NativePixmapType (*egl_destroy_pixmap_ID_mapping)(int id);
 
-    int ge2d_fd, ion_fd;
+    int ge2d_fd, ion_fd, fb_fd;
 } SDL_DisplayData;
 
 typedef struct SDL_WindowData
 {
-    // A pixmap is backed by multiple ION allocated backbuffers
-    mali_pixmap pixmap;
-    NativePixmapType pixmap_handle;
+	int flip_page;
+	int current_page;
+	int new_page;
+	SDL_mutex *triplebuf_mutex;
+	SDL_cond *triplebuf_cond;
+	SDL_Thread *triplebuf_thread;
+	int triplebuf_thread_stop;
 
+    // A pixmap is backed by multiple ION allocated backbuffers
     struct {
+        EGLSurface egl_surface;
+        NativePixmapType pixmap_handle;
+        mali_pixmap pixmap;
         int shared_fd;
         int handle;
-    } ion_surface[3];
+    } surface[3];
 
     // The created EGL Surface is backed by a mali pixmap
-    EGLSurface egl_surface;
 } SDL_WindowData;
 
 /****************************************************************************/
@@ -61,6 +69,9 @@ void MALI_SetWindowSize(_THIS, SDL_Window * window);
 void MALI_ShowWindow(_THIS, SDL_Window * window);
 void MALI_HideWindow(_THIS, SDL_Window * window);
 void MALI_DestroyWindow(_THIS, SDL_Window * window);
+void MALI_TripleBufferInit(SDL_WindowData *);
+void MALI_TripleBufferStop(SDL_VideoDevice *);
+int MALI_TripleBufferingThread(void *data);
 
 /* Window manager function */
 SDL_bool MALI_GetWindowWMInfo(_THIS, SDL_Window * window,

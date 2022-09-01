@@ -24,6 +24,7 @@
 typedef struct SDL_DisplayData
 {
     struct fb_var_screeninfo vinfo;
+    int cur_fb;
     struct fbdev_window native_display;
     NativePixmapType (*egl_create_pixmap_ID_mapping)(mali_pixmap *);
     NativePixmapType (*egl_destroy_pixmap_ID_mapping)(int id);
@@ -31,8 +32,20 @@ typedef struct SDL_DisplayData
     int ge2d_fd, ion_fd, fb_fd;
 } SDL_DisplayData;
 
+typedef struct MALI_EGL_Surface
+{
+    // A pixmap is backed by multiple ION allocated backbuffers, EGL fences, etc.
+    EGLSyncKHR fence;
+    EGLSurface egl_surface;
+    NativePixmapType pixmap_handle;
+    mali_pixmap pixmap;
+    int shared_fd;
+    int handle;
+} MALI_EGL_Surface;
+
 typedef struct SDL_WindowData
 {
+    int swapInterval;
 	int flip_page;
 	int current_page;
 	int new_page;
@@ -41,15 +54,7 @@ typedef struct SDL_WindowData
 	SDL_Thread *triplebuf_thread;
 	int triplebuf_thread_stop;
 
-    // A pixmap is backed by multiple ION allocated backbuffers
-    struct {
-        EGLSyncKHR fence;
-        EGLSurface egl_surface;
-        NativePixmapType pixmap_handle;
-        mali_pixmap pixmap;
-        int shared_fd;
-        int handle;
-    } surface[3];
+    MALI_EGL_Surface surface[3];
 
     // The created EGL Surface is backed by a mali pixmap
 } SDL_WindowData;

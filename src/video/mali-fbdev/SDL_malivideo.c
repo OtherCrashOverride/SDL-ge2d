@@ -37,6 +37,30 @@ MALI_Destroy(SDL_VideoDevice * device)
     }
 }
 
+static int
+MALI_GLES_SetSwapInterval(_THIS, int interval)
+{
+    SDL_WindowData *windowdata;
+    if (!_this->windows)
+        return 0;
+
+    windowdata = (SDL_WindowData *)_this->windows->driverdata;
+    windowdata->swapInterval = interval != 0;
+    return windowdata->swapInterval;
+}
+
+static int
+MALI_GLES_GetSwapInterval(_THIS)
+{
+    SDL_WindowData *windowdata;
+    if (!_this->windows)
+        return 0;
+
+    windowdata = (SDL_WindowData *)_this->windows->driverdata;
+    return windowdata->swapInterval;
+}
+
+
 static SDL_VideoDevice *
 MALI_Create()
 {
@@ -130,13 +154,13 @@ MALI_VideoInit(_THIS)
         MALI_VideoQuit(_this);
         return SDL_SetError("mali-fbdev: Could not get framebuffer information");
     }
-    /* Enable triple buffering */
-    /*
-    vinfo.yres_virtual = vinfo.yres * 3;
-    if (ioctl(fd, FBIOPUT_VSCREENINFO, vinfo) == -1) {
-	printf("mali-fbdev: Error setting VSCREENINFO\n");
+
+    data->vinfo.yres_virtual = data->vinfo.yres * 2;
+    if (ioctl(data->fb_fd, FBIOPUT_VSCREENINFO, &data->vinfo) == -1) {
+        MALI_VideoQuit(_this);
+        return SDL_SetError("mali-fbdev: Unable to setup framebuffer.");
     }
-    */
+
     system("setterm -cursor off");
 
     data->native_display.width = data->vinfo.xres;
@@ -232,16 +256,17 @@ static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdat
     // Populate pixmap definitions
     for (i = 0; i < 3; i++)
     {
-        windowdata->surface[i].pixmap.width = displaydata->native_display.width;
-        windowdata->surface[i].pixmap.height = displaydata->native_display.height;
-        windowdata->surface[i].pixmap.planes[0].stride = MALI_ALIGN(windowdata->surface[i].pixmap.width * 4, 64);
-        windowdata->surface[i].pixmap.planes[0].size = 
-            windowdata->surface[i].pixmap.planes[0].stride * windowdata->surface[i].pixmap.height;
-        windowdata->surface[i].pixmap.planes[0].offset = 0;
-        windowdata->surface[i].pixmap.format = MALI_FORMAT_ARGB8888; // appears to be 888X
+        MALI_EGL_Surface *surf = &windowdata->surface[i];
+        surf->pixmap.width = displaydata->native_display.width;
+        surf->pixmap.height = displaydata->native_display.height;
+        surf->pixmap.planes[0].stride = MALI_ALIGN(surf->pixmap.width * 4, 64);
+        surf->pixmap.planes[0].size = 
+            surf->pixmap.planes[0].stride * surf->pixmap.height;
+        surf->pixmap.planes[0].offset = 0;
+        surf->pixmap.format = MALI_FORMAT_ARGB8888; // appears to be 888X
 
         allocation_data = (struct ion_allocation_data){
-            .len = windowdata->surface[i].pixmap.planes[0].size,
+            .len = surf->pixmap.planes[0].size,
             .heap_id_mask = (1 << ION_HEAP_TYPE_DMA),
             .flags = 0
         };
@@ -264,24 +289,24 @@ static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdat
             return EGL_NO_SURFACE;
         }
 
-        windowdata->surface[i].handle = allocation_data.handle;
-        windowdata->surface[i].shared_fd = ion_data.fd;
-        windowdata->surface[i].pixmap.handles[0] = ion_data.fd;
+        surf->handle = allocation_data.handle;
+        surf->shared_fd = ion_data.fd;
+        surf->pixmap.handles[0] = ion_data.fd;
 
-        windowdata->surface[i].pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&windowdata->surface[i].pixmap);
-        SDL_Log("Created pixmap handle %p\n", windowdata->surface[i].pixmap_handle);
+        surf->pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&surf->pixmap);
+        SDL_Log("Created pixmap handle %p\n", surf->pixmap_handle);
         
-        windowdata->surface[i].egl_surface = _this->egl_data->eglCreatePixmapSurface(
+        surf->egl_surface = _this->egl_data->eglCreatePixmapSurface(
                 _this->egl_data->egl_display,
                 _this->egl_data->egl_config,
-                windowdata->surface[i].pixmap_handle, NULL);
-        if (windowdata->surface[i].egl_surface == EGL_NO_SURFACE) {
+                surf->pixmap_handle, NULL);
+        if (surf->egl_surface == EGL_NO_SURFACE) {
             SDL_EGL_SetError("Unable to create EGL window surface", "eglCreatePixmapSurface");
             return EGL_NO_SURFACE;
         }
     }
 
-    return windowdata->surface[0].egl_surface;
+    return windowdata->surface[1].egl_surface;
 }
 
 int
@@ -343,6 +368,8 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
     if (egl_surface == EGL_NO_SURFACE) {
         MALI_VideoQuit(_this);
         return SDL_SetError("mali-fbdev: Can't create EGL window surface");
+    } else {
+        MALI_GLES_MakeCurrent(_this, window, _this->current_glctx);
     }
 
     /* One window, it always has focus */
@@ -370,9 +397,10 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
 
     if (windowdata) {
         for (i = 0; i < 3; i++) {
-            close(windowdata->surface[i].shared_fd);
+            MALI_EGL_Surface *surf = &windowdata->surface[i];
+            close(surf->shared_fd);
             ionHandleData = (struct ion_handle_data) {
-                .handle = windowdata->surface[i].handle
+                .handle = surf->handle
             };
 
             io = ioctl(displaydata->ion_fd, ION_IOC_FREE, &ionHandleData);
@@ -380,15 +408,15 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
                 SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "ION_IOC_FREE failed.");
             }
 
-            windowdata->surface[i].shared_fd = -1;
-            windowdata->surface[i].handle = 0;
+            surf->shared_fd = -1;
+            surf->handle = 0;
 
-            if (windowdata->surface[i].egl_surface != EGL_NO_SURFACE) {
-                SDL_EGL_DestroySurface(_this, windowdata->surface[i].egl_surface);
-                windowdata->surface[i].egl_surface = EGL_NO_SURFACE;
+            if (surf->egl_surface != EGL_NO_SURFACE) {
+                SDL_EGL_DestroySurface(_this, surf->egl_surface);
+                surf->egl_surface = EGL_NO_SURFACE;
             }
             
-            displaydata->egl_destroy_pixmap_ID_mapping((unsigned long)windowdata->surface[i].pixmap_handle);
+            displaydata->egl_destroy_pixmap_ID_mapping((unsigned long)surf->pixmap_handle);
         }
 
         SDL_free(windowdata);

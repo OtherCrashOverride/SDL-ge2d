@@ -387,12 +387,13 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
                 SDL_EGL_DestroySurface(_this, windowdata->surface[i].egl_surface);
                 windowdata->surface[i].egl_surface = EGL_NO_SURFACE;
             }
+            
+            displaydata->egl_destroy_pixmap_ID_mapping((unsigned long)windowdata->surface[i].pixmap_handle);
         }
 
         SDL_free(windowdata);
     }
 
-    displaydata->egl_destroy_pixmap_ID_mapping((unsigned long)windowdata->surface[i].pixmap_handle);
     window->driverdata = NULL;
 }
 

@@ -205,6 +205,7 @@ static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdat
 
     _this->egl_data->egl_surfacetype = EGL_PIXMAP_BIT;
     if (SDL_EGL_ChooseConfig(_this) != 0) {
+        SDL_SetError("Unable to find a suitable EGL config");
         return EGL_NO_SURFACE;
     }
 
@@ -235,7 +236,7 @@ static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdat
         io = ioctl(displaydata->ion_fd, ION_IOC_ALLOC, &allocation_data);
         if (io != 0)
         {
-            SDL_EGL_SetError("Unable to create backing ION buffers", "ION_IOC_ALLOC");
+            SDL_SetError("Unable to create backing ION buffers");
             return EGL_NO_SURFACE;
         }
 
@@ -246,7 +247,7 @@ static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdat
         io = ioctl(displaydata->ion_fd, ION_IOC_SHARE, &ion_data);
         if (io != 0)
         {
-            SDL_EGL_SetError("Unable to create backing ION buffers", "ION_IOC_SHARE");
+            SDL_SetError("Unable to create backing ION buffers");
             return EGL_NO_SURFACE;
         }
 
@@ -262,7 +263,8 @@ static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdat
                 _this->egl_data->egl_config,
                 windowdata->surface[i].pixmap_handle, NULL);
         if (windowdata->surface[i].egl_surface == EGL_NO_SURFACE) {
-            SDL_EGL_SetError("unable to create an EGL window surface", "eglCreatePixmapSurface");
+            SDL_EGL_SetError("Unable to create EGL window surface", "eglCreatePixmapSurface");
+            return EGL_NO_SURFACE;
         }
     }
 

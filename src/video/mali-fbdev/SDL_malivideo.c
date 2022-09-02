@@ -227,7 +227,7 @@ MALI_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
     return 0;
 }
 
-static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
+static EGLSurface *MALI_EGL_InitPixmapSurfaces(_THIS, int width, int height, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
 {
     struct ion_fd_data ion_data;
     struct ion_allocation_data allocation_data;
@@ -250,8 +250,8 @@ static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdat
     for (i = 0; i < 3; i++)
     {
         MALI_EGL_Surface *surf = &windowdata->surface[i];
-        surf->pixmap.width = displaydata->native_display.width;
-        surf->pixmap.height = displaydata->native_display.height;
+        surf->pixmap.width = width;
+        surf->pixmap.height = height;
         surf->pixmap.planes[0].stride = MALI_ALIGN(surf->pixmap.width * 4, 64);
         surf->pixmap.planes[0].size = 
             surf->pixmap.planes[0].stride * surf->pixmap.height;
@@ -316,10 +316,6 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
         return SDL_OutOfMemory();
     }
 
-    /* Windows have one size for now */
-    window->w = displaydata->native_display.width;
-    window->h = displaydata->native_display.height;
-
     /* OpenGL ES is the law here */
     window->flags |= SDL_WINDOW_OPENGL;
 
@@ -350,9 +346,8 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
     windowdata->new_page = 2;
 
     SDL_LockMutex(windowdata->triplebuf_mutex);
+    egl_surface = MALI_EGL_InitPixmapSurfaces(_this, window->w, window->h, windowdata, displaydata);
     windowdata->triplebuf_thread = SDL_CreateThread(MALI_TripleBufferingThread, "MALI_TripleBufferingThread", _this);
-
-    egl_surface = MALI_EGL_CreatePixmapSurface(_this, windowdata, displaydata);
 
     /* Wait until the triplebuf thread is ready */
     SDL_CondWait(windowdata->triplebuf_cond, windowdata->triplebuf_mutex);

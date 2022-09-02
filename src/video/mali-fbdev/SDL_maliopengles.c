@@ -1,22 +1,33 @@
 #include "../../SDL_internal.h"
 
+
 #if SDL_VIDEO_DRIVER_MALI && SDL_VIDEO_OPENGL_EGL
+
+#include "SDL.h"
 
 #include "SDL_maliopengles.h"
 #include "SDL_malivideo.h"
+#include "SDL_maliblitter.h"
 
 int MALI_TripleBufferingThread(void *data)
 {
     unsigned int page;
+    MALI_Blitter blitter = {};
     MALI_EGL_Surface *current_surface;
 	SDL_WindowData *windowdata;
-    SDL_DisplayData *displaydata;
     SDL_VideoDevice* _this;
     
     _this = (SDL_VideoDevice*)data;
     windowdata = (SDL_WindowData *)_this->windows->driverdata;
-    displaydata = SDL_GetDisplayDriverData(0);
 
+    /* Initialize blitter */
+    if (!MALI_InitBlitter(_this, &blitter))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Failed to create blitter thread context");
+        SDL_Quit();
+    }
+
+    /* Signal triplebuf available */
 	SDL_LockMutex(windowdata->triplebuf_mutex);
 	SDL_CondSignal(windowdata->triplebuf_cond);
 
@@ -40,13 +51,10 @@ int MALI_TripleBufferingThread(void *data)
             EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 
             (EGLTimeKHR)1e+8);
         
-		displaydata->vinfo.yoffset = displaydata->vinfo.yres * displaydata->cur_fb;
-		ioctl(displaydata->fb_fd, FBIOPAN_DISPLAY, &displaydata->vinfo);
-
-        if (windowdata->swapInterval)
-            ioctl(displaydata->fb_fd, FBIO_WAITFORVSYNC, 0);
-        
-        displaydata->cur_fb = !displaydata->cur_fb;
+        blitter.glClearColor(0.0, 1.0, 0.0, 1.0);
+        blitter.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        MALI_Blitter_Blit(_this, &blitter, windowdata->current_page);
+        _this->egl_data->eglSwapBuffers(_this->egl_data->egl_display, blitter.surface);
 	}
 
 	SDL_UnlockMutex(windowdata->triplebuf_mutex);
@@ -93,6 +101,7 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
 {
     int r;
     unsigned int page;
+    EGLSurface surf;
     SDL_WindowData *windowdata;
 
     windowdata = (SDL_WindowData*)_this->windows->driverdata;
@@ -103,7 +112,8 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
     windowdata->new_page = windowdata->flip_page;
     windowdata->flip_page = page;
 
-    r = SDL_EGL_MakeCurrent(_this, windowdata->surface[windowdata->flip_page].egl_surface, _this->current_glctx);
+    surf = windowdata->surface[windowdata->flip_page].egl_surface;
+    r = _this->egl_data->eglMakeCurrent(_this->egl_data->egl_display, surf, surf, _this->current_glctx);
     windowdata->surface[windowdata->new_page].fence = _this->egl_data->eglCreateSyncKHR(_this->egl_data->egl_display, EGL_SYNC_FENCE_KHR, NULL);
 
     SDL_CondSignal(windowdata->triplebuf_cond);

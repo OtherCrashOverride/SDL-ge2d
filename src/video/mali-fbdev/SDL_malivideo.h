@@ -5,6 +5,7 @@
 #include "../SDL_sysvideo.h"
 
 #include "SDL_egl.h"
+#include "SDL_opengl.h"
 
 #include <EGL/egl.h>
 #include <linux/vt.h>
@@ -33,6 +34,8 @@ typedef struct SDL_DisplayData
 typedef struct MALI_EGL_Surface
 {
     // A pixmap is backed by multiple ION allocated backbuffers, EGL fences, etc.
+    EGLImageKHR egl_image;
+    GLuint texture; 
     EGLSyncKHR fence;
     EGLSurface egl_surface;
     NativePixmapType pixmap_handle;

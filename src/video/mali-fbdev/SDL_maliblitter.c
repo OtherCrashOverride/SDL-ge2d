@@ -9,12 +9,13 @@
 #include "SDL_maliopengles.h"
 #include "SDL_malivideo.h"
 
-static GLchar* blit_vert =
+static GLchar* blit_vert_fmt =
 "#version 100\n"
 "varying vec2 vTexCoord;\n"
 "attribute vec2 aCoord;\n"
 "void main() {\n"
 "   vTexCoord = ((aCoord + 1.0) / 2.0);\n"
+"   %s\n"
 "   gl_Position = vec4(aCoord, 0.0, 1.0);\n"
 "}";
 
@@ -74,7 +75,7 @@ MALI_Blitter_CreateContext(_THIS, EGLSurface egl_surface)
 int
 MALI_InitBlitter(_THIS, MALI_Blitter *blitter)
 {
-    char msg[2048] = {};
+    GLchar msg[2048] = {}, blit_vert[2048] = {};
     const GLchar *sources[2] = { blit_vert, blit_frag };
     SDL_WindowData *windowdata;
     SDL_DisplayData *displaydata;
@@ -112,6 +113,14 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter)
         SDL_EGL_SetError("Unable to make blitter EGL context current", "eglMakeCurrent");
         return 0;
     }
+
+    /* Setup vertex shader coord orientation */
+    SDL_snprintf(blit_vert, sizeof(blit_vert), blit_vert_fmt, 
+        (displaydata->rotation == 0) ? "" :
+        (displaydata->rotation == 1) ? "vTexCoord = vec2(vTexCoord.y, -vTexCoord.x);" :
+        (displaydata->rotation == 2) ? "vTexCoord = vec2(-vTexCoord.x, -vTexCoord.y);" :
+        (displaydata->rotation == 3) ? "vTexCoord = vec2(-vTexCoord.y, vTexCoord.x);" :
+        "#error Orientation out of scope");
 
     /* Compile vertex shader */
     blitter->vert = blitter->glCreateShader(GL_VERTEX_SHADER);

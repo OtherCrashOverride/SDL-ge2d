@@ -22,6 +22,7 @@
 
 typedef struct SDL_DisplayData
 {
+    int rotation;
     struct fb_var_screeninfo vinfo;
     int cur_fb;
     struct fbdev_window native_display;

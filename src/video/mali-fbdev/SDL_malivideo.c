@@ -122,6 +122,37 @@ VideoBootStrap MALI_bootstrap = {
 /* SDL Video and Display initialization/handling functions                   */
 /*****************************************************************************/
 
+void
+MALI_Reset_Orientation_Rotation(_THIS, SDL_VideoDisplay *display, SDL_DisplayData *data)
+{
+    const char *orientation, *rotation;
+
+    /* 
+     * Orientation is the default native display orientation, on ODROID Go Ultra
+     * that would be SDL_MALI_ORIENTATION = 1, rotation is the desired rotation on
+     * top of that, e.g. SDL_MALI_ROTATION = 1 or SDL_MALI_ROTATION = 3 for TATE modes.
+     */
+    data->rotation = 0;
+    orientation = SDL_getenv("SDL_MALI_ORIENTATION");
+    rotation = SDL_getenv("SDL_MALI_ROTATION");
+    if (orientation)
+        data->rotation = (data->rotation + SDL_atoi(orientation)) % 4;
+    if (rotation)
+        data->rotation = (data->rotation + SDL_atoi(rotation)) % 4;
+
+    if ((data->rotation & 1) == 0) {
+        display->current_mode.w = data->vinfo.xres;
+        display->current_mode.h = data->vinfo.yres;
+        display->desktop_mode.w = data->vinfo.xres;
+        display->desktop_mode.h = data->vinfo.yres;
+    } else {
+        display->current_mode.w = data->vinfo.yres;
+        display->current_mode.h = data->vinfo.xres;
+        display->desktop_mode.w = data->vinfo.yres;
+        display->desktop_mode.h = data->vinfo.xres;
+    }
+}
+
 int
 MALI_VideoInit(_THIS)
 {
@@ -161,8 +192,6 @@ MALI_VideoInit(_THIS)
     data->native_display.height = data->vinfo.yres;
 
     SDL_zero(current_mode);
-    current_mode.w = data->vinfo.xres;
-    current_mode.h = data->vinfo.yres;
     /* FIXME: Is there a way to tell the actual refresh rate? */
     current_mode.refresh_rate = 60;
     /* 32 bpp for default */
@@ -176,6 +205,7 @@ MALI_VideoInit(_THIS)
     display.current_mode = current_mode;
     display.driverdata = data;
 
+    MALI_Reset_Orientation_Rotation(_this, &display, data);
     SDL_AddVideoDisplay(&display, SDL_FALSE);
 
 #ifdef SDL_INPUT_LINUXEV

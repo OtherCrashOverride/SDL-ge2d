@@ -5,92 +5,6 @@
 #include "SDL_maliopengles.h"
 #include "SDL_malivideo.h"
 
-/* EGL implementation of SDL OpenGL support */
-void MALI_Rotate_Blit(_THIS, SDL_Window *window, MALI_EGL_Surface *target, int rotation)
-{
-    int io;
-    static struct ge2d_para_s blitRect = {};
-    static struct config_para_ex_ion_s blit_config = {};
-    SDL_DisplayData *displaydata;
-
-    displaydata = SDL_GetDisplayDriverData(0);
-
-    blit_config.alu_const_color = (uint32_t)~0x0;
-
-    // Definitions for the destionation buffer
-    blit_config.dst_para.mem_type = CANVAS_OSD0;
-    blit_config.dst_para.format = GE2D_FORMAT_S32_ARGB;
-
-    blit_config.dst_para.left = 0;
-    blit_config.dst_para.top = 0;
-    blit_config.dst_para.width = displaydata->native_display.width;
-    blit_config.dst_para.height = displaydata->native_display.height;
-    blit_config.dst_para.x_rev = 0;
-    blit_config.dst_para.y_rev = 0;
-
-    switch (rotation)
-    {
-        // OpenGL is flipped...
-        case Rotation_0:
-            blit_config.dst_para.y_rev = 1;
-            break;
-
-        case Rotation_90:
-            blit_config.dst_xy_swap = 1;
-            blit_config.dst_para.y_rev = 1;
-            blit_config.dst_para.x_rev = 1;
-            break;
-
-        case Rotation_180:
-            blit_config.dst_para.x_rev = 1;
-            break;
-
-        case Rotation_270:
-            blit_config.dst_xy_swap = 1;
-            break;
-            
-        default:
-            break;
-    }
-
-    // Definitions for the source buffers
-    blit_config.src_para.mem_type = CANVAS_ALLOC;
-    blit_config.src_para.format = GE2D_FORMAT_S32_ARGB;
-
-    blit_config.src_para.left = 0;
-    blit_config.src_para.top = 0;
-    blit_config.src_para.width = window->w;
-    blit_config.src_para.height = window->h;
-
-    blit_config.src_planes[0].shared_fd = target->shared_fd;
-    blit_config.src_planes[0].w = target->pixmap.planes[0].stride / 4;
-    blit_config.src_planes[0].h = target->pixmap.height;
-
-    io = ioctl(displaydata->ge2d_fd, GE2D_CONFIG_EX_ION, &blit_config);
-    if (io < 0)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GE2D_CONFIG failed.");
-        abort();
-    }
-
-    blitRect.src1_rect.x = 0;
-    blitRect.src1_rect.y = 0;
-    blitRect.src1_rect.w = target->pixmap.width;
-    blitRect.src1_rect.h = target->pixmap.height;
-
-    blitRect.dst_rect.x = 0;
-    blitRect.dst_rect.y = displaydata->vinfo.yres * displaydata->cur_fb;
-    blitRect.dst_rect.w = blit_config.dst_para.width;
-    blitRect.dst_rect.h = blit_config.dst_para.height;
-
-    io = ioctl(displaydata->ge2d_fd, GE2D_STRETCHBLIT_NOALPHA, &blitRect);
-    if (io < 0)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "GE2D Blit failed.");
-        abort();
-    }
-}
-
 int MALI_TripleBufferingThread(void *data)
 {
     unsigned int page;
@@ -126,9 +40,6 @@ int MALI_TripleBufferingThread(void *data)
             EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 
             (EGLTimeKHR)1e+8);
         
-        /* blit, flip and wait for vsync if needed */
-        MALI_Rotate_Blit(data, _this->windows, current_surface, Rotation_0);
-
 		displaydata->vinfo.yoffset = displaydata->vinfo.yres * displaydata->cur_fb;
 		ioctl(displaydata->fb_fd, FBIOPAN_DISPLAY, &displaydata->vinfo);
 

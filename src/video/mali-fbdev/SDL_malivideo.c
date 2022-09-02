@@ -144,12 +144,6 @@ MALI_VideoInit(_THIS)
         return SDL_SetError("mali-fbdev: Could not open ion device");
     }
 
-    data->ge2d_fd = open("/dev/ge2d", O_RDWR, 0);
-    if (data->ge2d_fd < 0) {
-        close(data->ion_fd);
-        return SDL_SetError("mali-fbdev: Could not open ge2d device");
-    }
-
     if (ioctl(data->fb_fd, FBIOGET_VSCREENINFO, &data->vinfo) < 0) {
         MALI_VideoQuit(_this);
         return SDL_SetError("mali-fbdev: Could not get framebuffer information");
@@ -206,7 +200,6 @@ MALI_VideoQuit(_THIS)
 
     close(displaydata->fb_fd);
     close(displaydata->ion_fd);
-    close(displaydata->ge2d_fd);
     //TODO:: Destroy the other buffers...
 
     /* Clear the framebuffer and ser cursor on again */

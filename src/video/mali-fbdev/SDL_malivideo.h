@@ -18,8 +18,6 @@
 
 #include "mali.h"
 #include "ion.h"
-#include "ge2d.h"
-#include "ge2d_cmd.h"
 
 typedef struct SDL_DisplayData
 {
@@ -29,7 +27,7 @@ typedef struct SDL_DisplayData
     NativePixmapType (*egl_create_pixmap_ID_mapping)(mali_pixmap *);
     NativePixmapType (*egl_destroy_pixmap_ID_mapping)(int id);
 
-    int ge2d_fd, ion_fd, fb_fd;
+    int ion_fd, fb_fd;
 } SDL_DisplayData;
 
 typedef struct MALI_EGL_Surface

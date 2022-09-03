@@ -165,14 +165,10 @@ MALI_VideoInit(_THIS)
         return SDL_OutOfMemory();
     }
 
+    /* Setup framebuffer */
     data->fb_fd = open("/dev/fb0", O_RDWR, 0);
     if (data->fb_fd < 0) {
         return SDL_SetError("mali-fbdev: Could not open framebuffer device");
-    }
-
-    data->ion_fd = open("/dev/ion", O_RDWR, 0);
-    if (data->ion_fd < 0) {
-        return SDL_SetError("mali-fbdev: Could not open ion device");
     }
 
     if (ioctl(data->fb_fd, FBIOGET_VSCREENINFO, &data->vinfo) < 0) {
@@ -180,10 +176,10 @@ MALI_VideoInit(_THIS)
         return SDL_SetError("mali-fbdev: Could not get framebuffer information");
     }
 
-    data->vinfo.yres_virtual = data->vinfo.yres * 2;
-    if (ioctl(data->fb_fd, FBIOPUT_VSCREENINFO, &data->vinfo) == -1) {
-        MALI_VideoQuit(_this);
-        return SDL_SetError("mali-fbdev: Unable to setup framebuffer.");
+    /* Setup ION allocator */
+    data->ion_fd = open("/dev/ion", O_RDWR, 0);
+    if (data->ion_fd < 0) {
+        return SDL_SetError("mali-fbdev: Could not open ion device");
     }
 
     system("setterm -cursor off");
@@ -223,14 +219,11 @@ MALI_VideoQuit(_THIS)
     SDL_DisplayData *displaydata = (SDL_DisplayData*)SDL_GetDisplayDriverData(0);
     int fd = open("/dev/tty", O_RDWR);
 
+    MALI_TripleBufferQuit(_this);
+    
     /* Cleanup after ion and ge2d */
-    if (_this->windows) {
-        MALI_DestroyWindow(_this, _this->windows);
-    }
-
-    close(displaydata->fb_fd);
     close(displaydata->ion_fd);
-    //TODO:: Destroy the other buffers...
+    close(displaydata->fb_fd);
 
     /* Clear the framebuffer and ser cursor on again */
     ioctl(fd, VT_ACTIVATE, 5);
@@ -355,6 +348,8 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
         }
     }
 
+    MALI_TripleBufferQuit(_this);
+
     /* Acquire handle to internal pixmap routines */
     if (!displaydata->egl_create_pixmap_ID_mapping) {
         displaydata->egl_create_pixmap_ID_mapping = SDL_EGL_GetProcAddress(_this, "egl_create_pixmap_ID_mapping");
@@ -406,35 +401,39 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
     SDL_DisplayData *displaydata;
     struct ion_handle_data ionHandleData;
 
-    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Destroying MALI window.");
-
-    MALI_TripleBufferStop(_this);
+    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Destroying MALI window %p.", window);
 
     windowdata = window->driverdata;
     displaydata = SDL_GetDisplayDriverData(0);
 
+    MALI_TripleBufferQuit(_this);
+
     if (windowdata) {
         for (i = 0; i < 3; i++) {
             MALI_EGL_Surface *surf = &windowdata->surface[i];
-            close(surf->shared_fd);
-            ionHandleData = (struct ion_handle_data) {
-                .handle = surf->handle
-            };
-
-            io = ioctl(displaydata->ion_fd, ION_IOC_FREE, &ionHandleData);
-            if (io != 0) {
-                SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "ION_IOC_FREE failed.");
-            }
-
-            surf->shared_fd = -1;
-            surf->handle = 0;
 
             if (surf->egl_surface != EGL_NO_SURFACE) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Destroying Surface %d.", i);
                 SDL_EGL_DestroySurface(_this, surf->egl_surface);
                 surf->egl_surface = EGL_NO_SURFACE;
+
+                displaydata->egl_destroy_pixmap_ID_mapping((unsigned long)surf->pixmap_handle);
+                
+                ionHandleData = (struct ion_handle_data) {
+                    .handle = surf->handle
+                };
+
+                io = ioctl(displaydata->ion_fd, ION_IOC_FREE, &ionHandleData);
+                if (io != 0) {
+                    SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "ION_IOC_FREE failed.");
+                }
+
+                close(surf->shared_fd);
+                surf->shared_fd = -1;
             }
-            
-            displaydata->egl_destroy_pixmap_ID_mapping((unsigned long)surf->pixmap_handle);
+
+            surf->handle = 0;
+            surf->pixmap_handle = 0;
         }
 
         SDL_free(windowdata);

@@ -15,16 +15,25 @@ int MALI_TripleBufferingThread(void *data)
     MALI_Blitter blitter = {};
     MALI_EGL_Surface *current_surface;
 	SDL_WindowData *windowdata;
+    SDL_DisplayData *displaydata;
     SDL_VideoDevice* _this;
     
     _this = (SDL_VideoDevice*)data;
     windowdata = (SDL_WindowData *)_this->windows->driverdata;
+    displaydata = (SDL_DisplayData*)SDL_GetDisplayDriverData(0);
 
     /* Initialize blitter */
     if (!MALI_InitBlitter(_this, &blitter))
     {
         SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Failed to create blitter thread context");
         SDL_Quit();
+    }
+
+    /* Reset yoffset, otherwise some applications get stuck */
+    displaydata->vinfo.yoffset = 0;
+    if (ioctl(displaydata->fb_fd, FBIOPUT_VSCREENINFO, &displaydata->vinfo) < 0) {
+        MALI_VideoQuit(_this);
+        return SDL_SetError("mali-fbdev: Could not get framebuffer information");
     }
 
     /* Signal triplebuf available */
@@ -45,17 +54,22 @@ int MALI_TripleBufferingThread(void *data)
         current_surface = &windowdata->surface[windowdata->current_page];
 
 		/* wait for fence and flip display */
-        _this->egl_data->eglClientWaitSyncKHR(
+        if (_this->egl_data->eglClientWaitSyncKHR(
             _this->egl_data->egl_display,
             current_surface->fence, 
             EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 
-            (EGLTimeKHR)1e+8);
-        
-        blitter.glClearColor(0.0, 1.0, 0.0, 1.0);
-        blitter.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        MALI_Blitter_Blit(_this, &blitter, windowdata->current_page);
-        _this->egl_data->eglSwapBuffers(_this->egl_data->egl_display, blitter.surface);
+            EGL_FOREVER_NV))
+        {
+            blitter.glClearColor(0.0, 1.0, 0.0, 1.0);
+            blitter.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            MALI_Blitter_Blit(_this, &blitter, windowdata->current_page);
+            _this->egl_data->eglSwapBuffers(_this->egl_data->egl_display, blitter.surface);
+        }
 	}
+
+    _this->egl_data->eglMakeCurrent(_this->egl_data->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    _this->egl_data->eglDestroySurface(_this->egl_data->egl_display, blitter.surface);
+    _this->egl_data->eglDestroyContext(_this->egl_data->egl_display, blitter.context);
 
 	SDL_UnlockMutex(windowdata->triplebuf_mutex);
 	return 0;
@@ -71,23 +85,29 @@ void MALI_TripleBufferInit(SDL_WindowData *windowdata)
 void MALI_TripleBufferStop(_THIS)
 {
     SDL_WindowData *windowdata = (SDL_WindowData*)_this->windows->driverdata;
-    if (windowdata) {
-        SDL_LockMutex(windowdata->triplebuf_mutex);
-        windowdata->triplebuf_thread_stop = 1;
-        SDL_CondSignal(windowdata->triplebuf_cond);
-        SDL_UnlockMutex(windowdata->triplebuf_mutex);
+    if (!windowdata || windowdata->triplebuf_thread == NULL)
+        return;
 
-        SDL_WaitThread(windowdata->triplebuf_thread, NULL);
-        windowdata->triplebuf_thread = NULL;
-    }
+    SDL_LockMutex(windowdata->triplebuf_mutex);
+    windowdata->triplebuf_thread_stop = 1;
+    SDL_CondSignal(windowdata->triplebuf_cond);
+    SDL_UnlockMutex(windowdata->triplebuf_mutex);
+
+    SDL_WaitThread(windowdata->triplebuf_thread, NULL);
+    windowdata->triplebuf_thread = NULL;
 }
 
 void MALI_TripleBufferQuit(_THIS)
 {
-    SDL_WindowData *windowdata = (SDL_WindowData*)_this->windows->driverdata;
+    SDL_WindowData *windowdata;
+    if (!_this->windows)
+        return;
 
-	if (windowdata->triplebuf_thread)
-		MALI_TripleBufferStop(_this);
+    windowdata = (SDL_WindowData*)_this->windows->driverdata;
+    if (!windowdata || windowdata->triplebuf_thread == NULL)
+        return;
+
+    MALI_TripleBufferStop(_this);
 	SDL_DestroyMutex(windowdata->triplebuf_mutex);
 	SDL_DestroyCond(windowdata->triplebuf_cond);
 }

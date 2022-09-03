@@ -79,6 +79,7 @@ void MALI_HideWindow(_THIS, SDL_Window * window);
 void MALI_DestroyWindow(_THIS, SDL_Window * window);
 void MALI_TripleBufferInit(SDL_WindowData *);
 void MALI_TripleBufferStop(SDL_VideoDevice *);
+void MALI_TripleBufferQuit(SDL_VideoDevice *);
 int MALI_TripleBufferingThread(void *data);
 
 /* Window manager function */

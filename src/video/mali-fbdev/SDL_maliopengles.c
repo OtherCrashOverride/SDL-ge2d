@@ -29,11 +29,11 @@ int MALI_TripleBufferingThread(void *data)
         SDL_Quit();
     }
 
-    /* Reset yoffset, otherwise some applications get stuck */
+    /* Reset yoffset, otherwise applications can get stuck */
     displaydata->vinfo.yoffset = 0;
     if (ioctl(displaydata->fb_fd, FBIOPUT_VSCREENINFO, &displaydata->vinfo) < 0) {
         MALI_VideoQuit(_this);
-        return SDL_SetError("mali-fbdev: Could not get framebuffer information");
+        return SDL_SetError("mali-fbdev: Could not put framebuffer information");
     }
 
     /* Signal triplebuf available */

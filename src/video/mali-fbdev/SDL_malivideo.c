@@ -260,7 +260,7 @@ static EGLSurface *MALI_EGL_InitPixmapSurfaces(_THIS, int width, int height, SDL
 {
     struct ion_fd_data ion_data;
     struct ion_allocation_data allocation_data;
-    int i, io;
+    int i, io, stride;
 
     _this->egl_data->egl_surfacetype = EGL_PIXMAP_BIT;
     if (SDL_EGL_ChooseConfig(_this) != 0) {
@@ -276,17 +276,25 @@ static EGLSurface *MALI_EGL_InitPixmapSurfaces(_THIS, int width, int height, SDL
     }
 
     // Populate pixmap definitions
+    stride = width * 4;
     for (i = 0; i < 3; i++)
     {
         MALI_EGL_Surface *surf = &windowdata->surface[i];
-        surf->pixmap.width = width;
-        surf->pixmap.height = height;
-        surf->pixmap.planes[0].stride = MALI_ALIGN(surf->pixmap.width * 4, 64);
-        surf->pixmap.planes[0].size = 
-            surf->pixmap.planes[0].stride * surf->pixmap.height;
-        surf->pixmap.planes[0].offset = 0;
-        surf->pixmap.format = MALI_FORMAT_ARGB8888; // appears to be 888X
+        surf->pixmap = (mali_pixmap) {
+            .width = width,
+            .height = height,
+            .planes[0] = (mali_plane) {
+                .stride = stride,
+                .size = stride * height,
+                .offset = 0
+            },
+            .planes[1] = (mali_plane) {},
+            .planes[2] = (mali_plane) {},
+            .format = MALI_FORMAT_ARGB8888,
+            .handles = {-1, -1, -1},
+        };
 
+        /* Allocate framebuffer data */
         allocation_data = (struct ion_allocation_data){
             .len = surf->pixmap.planes[0].size,
             .heap_id_mask = (1 << ION_HEAP_TYPE_DMA),
@@ -300,6 +308,7 @@ static EGLSurface *MALI_EGL_InitPixmapSurfaces(_THIS, int width, int height, SDL
             return EGL_NO_SURFACE;
         }
 
+        /* Export DMA_BUF handle for the framebuffer */  
         ion_data = (struct ion_fd_data){
             .handle = allocation_data.handle
         };
@@ -311,8 +320,11 @@ static EGLSurface *MALI_EGL_InitPixmapSurfaces(_THIS, int width, int height, SDL
             return EGL_NO_SURFACE;
         }
 
+        /* Recall fd and handle for teardown later */
         surf->handle = allocation_data.handle;
         surf->shared_fd = ion_data.fd;
+
+        /* Create Pixmap Surface using DMA_BUF framebuffer fd */
         surf->pixmap.handles[0] = ion_data.fd;
 
         surf->pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&surf->pixmap);

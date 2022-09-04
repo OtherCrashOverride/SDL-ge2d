@@ -166,12 +166,6 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter)
 
     for (int i = 0; i < 3; i++) {
         MALI_EGL_Surface *mali_surf = &windowdata->surface[0];
-
-        /* 
-         * There's a nasty bug in EmuELEC 4.5 libMali which causes eglCreateImageKHR to expect
-         * ints instead of EGLAttrib (aka intptr_t) - check 0x004ddb84 for answers.
-         */
-
         EGLint attribute_list[] = {
             EGL_WIDTH, mali_surf->pixmap.width,
             EGL_HEIGHT, mali_surf->pixmap.height,

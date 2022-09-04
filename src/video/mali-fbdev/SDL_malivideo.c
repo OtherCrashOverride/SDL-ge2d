@@ -445,6 +445,10 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
 
     MALI_TripleBufferQuit(_this);
 
+    // You MUST ensure all of the surfaces are unbound, otherwise deletion fails, and mode changes will fail.
+    // We're not using the SDL built-in here to avoid any unecessary state changes from it
+    _this->egl_data->eglMakeCurrent(_this->egl_data->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, _this->current_glctx);
+
     if (windowdata) {
         for (i = 0; i < 3; i++) {
             MALI_EGL_Surface *surf = &windowdata->surface[i];
@@ -492,6 +496,9 @@ MALI_SetWindowPosition(_THIS, SDL_Window * window)
 void
 MALI_SetWindowSize(_THIS, SDL_Window * window)
 {
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: New Display mode: %dx%d\n", window->w, window->h);
+    MALI_DestroyWindow(_this, window);
+    MALI_CreateWindow(_this, window);
 }
 
 void

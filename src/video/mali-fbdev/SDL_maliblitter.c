@@ -38,7 +38,7 @@ MALI_Blitter_CreateContext(_THIS, EGLSurface egl_surface)
     int attr = 0;
 
     if (!_this->egl_data) {
-        SDL_SetError("EGL not initialized");
+        SDL_SetError("mali-fbdev: EGL not initialized");
         return NULL;
     }
 
@@ -63,7 +63,7 @@ MALI_Blitter_CreateContext(_THIS, EGLSurface egl_surface)
                                       EGL_NO_CONTEXT, attribs);
 
     if (egl_context == EGL_NO_CONTEXT) {
-        SDL_EGL_SetError("Could not create EGL context", "eglCreateContext");
+        SDL_EGL_SetError("mali-fbdev: Could not create EGL context", "eglCreateContext");
         return NULL;
     }
 
@@ -91,13 +91,13 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
 
     blitter->surface = SDL_EGL_CreateSurface(_this, nw);
     if (blitter->surface == EGL_NO_SURFACE) {
-        SDL_EGL_SetError("Failed to setup blitter EGL Surface", "SDL_EGL_CreateSurface");
+        SDL_EGL_SetError("mali-fbdev: Failed to setup blitter EGL Surface", "SDL_EGL_CreateSurface");
         return 0;
     }
 
     blitter->context = MALI_Blitter_CreateContext(_this, blitter->surface);
     if (blitter->context == EGL_NO_CONTEXT) {
-        SDL_EGL_SetError("Failed to setup blitter EGL Context", "SDL_EGL_CreateContext");
+        SDL_EGL_SetError("mali-fbdev: Failed to setup blitter EGL Context", "SDL_EGL_CreateContext");
         return 0;
     }
     
@@ -106,7 +106,7 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
         blitter->surface, 
         blitter->context))
     {
-        SDL_EGL_SetError("Unable to make blitter EGL context current", "eglMakeCurrent");
+        SDL_EGL_SetError("mali-fbdev: Unable to make blitter EGL context current", "eglMakeCurrent");
         return 0;
     }
 
@@ -123,14 +123,14 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->glShaderSource(blitter->vert, 1, &sources[0], NULL);
     blitter->glCompileShader(blitter->vert);
     blitter->glGetShaderInfoLog(blitter->vert, sizeof(msg), NULL, msg);
-    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Vertex Shader Info: %s\n", msg);
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Vertex Shader Info: %s\n", msg);
 
     /* Compile the fragment shader */
     blitter->frag = blitter->glCreateShader(GL_FRAGMENT_SHADER);
     blitter->glShaderSource(blitter->frag, 1, &sources[1], NULL);
     blitter->glCompileShader(blitter->frag);
     blitter->glGetShaderInfoLog(blitter->frag, sizeof(msg), NULL, msg);
-    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Fragment Shader Info: %s\n", msg);
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Fragment Shader Info: %s\n", msg);
 
     blitter->prog = blitter->glCreateProgram();
     blitter->glAttachShader(blitter->prog, blitter->vert);
@@ -140,7 +140,7 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->loc_aCoord = blitter->glGetAttribLocation(blitter->prog, "aCoord");
     blitter->loc_uFBOtex = blitter->glGetUniformLocation(blitter->prog, "uFBOTex");
     blitter->glGetProgramInfoLog(blitter->prog, sizeof(msg), NULL, msg);
-    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Program Info: %s\n", msg);
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Program Info: %s\n", msg);
 
     /* Setup programs */
     blitter->glUseProgram(blitter->prog);
@@ -178,7 +178,7 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
             (EGLClientBuffer)NULL,
             &attribute_list[0]);
         if (blitter->planes[i].image == EGL_NO_IMAGE_KHR) {
-            SDL_EGL_SetError("Failed to create Blitter EGL Image", "eglCreateImageKHR");
+            SDL_EGL_SetError("mali-fbdev: Failed to create Blitter EGL Image", "eglCreateImageKHR");
             return 0;
         }
 
@@ -239,7 +239,7 @@ int MALI_TripleBufferingThread(void *data)
     if (!MALI_InitBlitter(_this, &blitter, (NativeWindowType)&displaydata->native_display, 
         displaydata->rotation))
     {
-        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Failed to create blitter thread context");
+        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Failed to create blitter thread context");
         SDL_Quit();
     }
 

@@ -279,13 +279,13 @@ static EGLSurface
 
     _this->egl_data->egl_surfacetype = EGL_PIXMAP_BIT;
     if (SDL_EGL_ChooseConfig(_this) != 0) {
-        SDL_SetError("Unable to find a suitable EGL config");
+        SDL_SetError("mali-fbdev: Unable to find a suitable EGL config");
         return EGL_NO_SURFACE;
     }
 
     if (_this->gl_config.framebuffer_srgb_capable) {
         {
-            SDL_SetError("EGL implementation does not support sRGB system framebuffers");
+            SDL_SetError("mali-fbdev: EGL implementation does not support sRGB system framebuffers");
             return EGL_NO_SURFACE;
         }
     }
@@ -319,7 +319,7 @@ static EGLSurface
         io = ioctl(displaydata->ion_fd, ION_IOC_ALLOC, &allocation_data);
         if (io != 0)
         {
-            SDL_SetError("Unable to create backing ION buffers");
+            SDL_SetError("mali-fbdev: Unable to create backing ION buffers");
             return EGL_NO_SURFACE;
         }
 
@@ -331,7 +331,7 @@ static EGLSurface
         io = ioctl(displaydata->ion_fd, ION_IOC_SHARE, &ion_data);
         if (io != 0)
         {
-            SDL_SetError("Unable to create backing ION buffers");
+            SDL_SetError("mali-fbdev: Unable to create backing ION buffers");
             return EGL_NO_SURFACE;
         }
 
@@ -343,14 +343,14 @@ static EGLSurface
         surf->pixmap.handles[0] = ion_data.fd;
 
         surf->pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&surf->pixmap);
-        SDL_Log("Created pixmap handle %p\n", surf->pixmap_handle);
+        SDL_Log("mali-fbdev: Created pixmap handle %p\n", surf->pixmap_handle);
         
         surf->egl_surface = _this->egl_data->eglCreatePixmapSurface(
                 _this->egl_data->egl_display,
                 _this->egl_data->egl_config,
                 surf->pixmap_handle, NULL);
         if (surf->egl_surface == EGL_NO_SURFACE) {
-            SDL_EGL_SetError("Unable to create EGL window surface", "eglCreatePixmapSurface");
+            SDL_EGL_SetError("mali-fbdev: Unable to create EGL window surface", "eglCreatePixmapSurface");
             return EGL_NO_SURFACE;
         }
     }
@@ -434,7 +434,7 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
     SDL_DisplayData *displaydata;
     struct ion_handle_data ionHandleData;
 
-    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Destroying MALI window %p.", window);
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Destroying MALI window %p.", window);
 
     windowdata = window->driverdata;
     displaydata = SDL_GetDisplayDriverData(0);
@@ -446,7 +446,7 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
             MALI_EGL_Surface *surf = &windowdata->surface[i];
 
             if (surf->egl_surface != EGL_NO_SURFACE) {
-                SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "Destroying Surface %d.", i);
+                SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Destroying Surface %d.", i);
                 SDL_EGL_DestroySurface(_this, surf->egl_surface);
                 surf->egl_surface = EGL_NO_SURFACE;
 
@@ -458,7 +458,7 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
 
                 io = ioctl(displaydata->ion_fd, ION_IOC_FREE, &ionHandleData);
                 if (io != 0) {
-                    SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "ION_IOC_FREE failed.");
+                    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: ION_IOC_FREE ioctl failed.");
                 }
 
                 close(surf->shared_fd);

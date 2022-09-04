@@ -281,10 +281,17 @@ int MALI_TripleBufferingThread(void *data)
         }
 	}
 
+    /* Execution is done, teardown the allocated resources */ 
     _this->egl_data->eglMakeCurrent(_this->egl_data->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    for (int i = 0; i < 3; i++) {
+        blitter.glDeleteTextures(1, &blitter.planes[i].texture);
+        _this->egl_data->eglDestroyImageKHR(_this->egl_data->egl_display, blitter.planes[i].image);
+    }
     _this->egl_data->eglDestroySurface(_this->egl_data->egl_display, blitter.surface);
     _this->egl_data->eglDestroyContext(_this->egl_data->egl_display, blitter.context);
+    _this->egl_data->eglReleaseThread();
 
+    /* Signal thread done */
 	SDL_UnlockMutex(windowdata->triplebuf_mutex);
 	return 0;
 }

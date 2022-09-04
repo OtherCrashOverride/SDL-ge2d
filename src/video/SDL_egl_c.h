@@ -73,6 +73,9 @@ typedef struct SDL_EGL_VideoData
                                         EGLenum target,
                                         EGLClientBuffer buffer,
                                         const EGLint *attrib_list);
+
+    EGLBoolean(EGLAPIENTRY *eglDestroyImageKHR)(EGLDisplay dpy,
+                                        EGLImageKHR image);
     
     EGLSurface(EGLAPIENTRY *eglCreatePixmapSurface) (EGLDisplay dpy,
                                          EGLConfig config,
@@ -105,6 +108,8 @@ typedef struct SDL_EGL_VideoData
     EGLBoolean(EGLAPIENTRY *eglWaitNative) (EGLint  engine);
 
     EGLBoolean(EGLAPIENTRY *eglWaitGL)(void);
+
+    EGLBoolean(EGLAPIENTRY *eglReleaseThread)(void);
     
     EGLBoolean(EGLAPIENTRY *eglBindAPI)(EGLenum);
 

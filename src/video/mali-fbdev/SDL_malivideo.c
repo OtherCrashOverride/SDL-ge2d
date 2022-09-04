@@ -16,6 +16,7 @@
 
 #include "SDL_malivideo.h"
 #include "SDL_maliopengles.h"
+#include "SDL_maliblitter.h"
 
 void
 MALI_SetTTYCursor(SDL_bool state)
@@ -269,7 +270,8 @@ MALI_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
     return 0;
 }
 
-static EGLSurface *MALI_EGL_InitPixmapSurfaces(_THIS, int width, int height, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
+static EGLSurface
+*MALI_EGL_InitPixmapSurfaces(_THIS, int width, int height, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
 {
     struct ion_fd_data ion_data;
     struct ion_allocation_data allocation_data;

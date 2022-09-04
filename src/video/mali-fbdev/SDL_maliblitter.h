@@ -26,8 +26,12 @@ typedef struct MALI_Blitter {
     #undef SDL_PROC
 } MALI_Blitter;
 
-extern int MALI_InitBlitter(_THIS, MALI_Blitter *blitter);
-extern void MALI_Blitter_Blit(_THIS, MALI_Blitter *blitter, int texture);
+int MALI_InitBlitter(_THIS, MALI_Blitter *blitter);
+void MALI_Blitter_Blit(_THIS, MALI_Blitter *blitter, int texture);
+void MALI_TripleBufferInit(SDL_WindowData *windowdata);
+void MALI_TripleBufferStop(_THIS);
+void MALI_TripleBufferQuit(_THIS);
+int MALI_TripleBufferingThread(void *data);
 
 #endif /* SDL_VIDEO_DRIVER_MALI && SDL_VIDEO_OPENGL_EGL */
 

@@ -164,6 +164,7 @@ MALI_Reset_Orientation_Rotation(_THIS, SDL_VideoDisplay *display, SDL_DisplayDat
 
     display->desktop_mode.w = display->current_mode.w;
     display->desktop_mode.h = display->current_mode.h;
+    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Display Mode: %dx%d.", display->current_mode.w, display->current_mode.h);
 }
 
 int
@@ -283,6 +284,7 @@ static EGLSurface
         return EGL_NO_SURFACE;
     }
 
+    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Creating Pixmap (%dx%d) buffers", width, height);
     if (_this->gl_config.framebuffer_srgb_capable) {
         {
             SDL_SetError("mali-fbdev: EGL implementation does not support sRGB system framebuffers");
@@ -291,7 +293,7 @@ static EGLSurface
     }
 
     // Populate pixmap definitions
-    stride = width * 4;
+    stride = MALI_ALIGN(width * 4, 64);
     for (i = 0; i < 3; i++)
     {
         MALI_EGL_Surface *surf = &windowdata->surface[i];
@@ -338,12 +340,13 @@ static EGLSurface
         /* Recall fd and handle for teardown later */
         surf->handle = allocation_data.handle;
         surf->shared_fd = ion_data.fd;
+        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Created ION buffer %d (fd: %d)\n", surf->handle, surf->shared_fd);
 
         /* Create Pixmap Surface using DMA_BUF framebuffer fd */
         surf->pixmap.handles[0] = ion_data.fd;
 
         surf->pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&surf->pixmap);
-        SDL_Log("mali-fbdev: Created pixmap handle %p\n", surf->pixmap_handle);
+        SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Created pixmap handle %p\n", surf->pixmap_handle);
         
         surf->egl_surface = _this->egl_data->eglCreatePixmapSurface(
                 _this->egl_data->egl_display,
@@ -373,6 +376,7 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
     }
 
     /* OpenGL ES is the law here */
+    SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Display mode: %dx%d\n", window->w, window->h);
     window->flags |= SDL_WINDOW_OPENGL;
 
     if (!_this->egl_data) {

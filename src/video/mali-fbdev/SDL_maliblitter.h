@@ -12,21 +12,26 @@
 #include "SDL_opengl.h"
 
 typedef struct MALI_Blitter {
+    /* OpenGL Surface and Context */
     EGLSurface *surface;
     SDL_GLContext *context;
     GLuint frag, vert, prog, vbo, vao;
     GLint loc_aCoord, loc_uFBOtex;
+    GLsizei viewport_width, viewport_height;
+    GLint plane_width, plane_height, plane_pitch;
+
     struct {
+        int fd;
         GLuint texture;
         EGLImageKHR image;
-    } frames[3];
+    } planes[3];
 
     #define SDL_PROC(ret,func,params) ret (APIENTRY *func) params;
     #include "SDL_maliblitter_funcs.h"
     #undef SDL_PROC
 } MALI_Blitter;
 
-int MALI_InitBlitter(_THIS, MALI_Blitter *blitter);
+int MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation);
 void MALI_Blitter_Blit(_THIS, MALI_Blitter *blitter, int texture);
 void MALI_TripleBufferInit(SDL_WindowData *windowdata);
 void MALI_TripleBufferStop(_THIS);

@@ -18,6 +18,19 @@
 #include "SDL_maliopengles.h"
 
 void
+MALI_SetTTYCursor(SDL_bool state)
+{
+    char *ssh_tty;
+    if ((ssh_tty = SDL_getenv("SSH_TTY")) != NULL)
+        return;
+    
+    if (state)
+        system("setterm -cursor on");
+    else
+        system("setterm -cursor off");
+}
+
+void
 MALI_GLES_DefaultProfileConfig(_THIS, int *mask, int *major, int *minor)
 {
     if (!SDL_getenv("SDL_DEFAULT_CONTEXT_PROFILE"))
@@ -187,7 +200,7 @@ MALI_VideoInit(_THIS)
         return SDL_SetError("mali-fbdev: Could not open ion device");
     }
 
-    system("setterm -cursor off");
+    MALI_SetTTYCursor(SDL_FALSE);
 
     data->native_display.width = data->vinfo.xres;
     data->native_display.height = data->vinfo.yres;
@@ -234,7 +247,8 @@ MALI_VideoQuit(_THIS)
     ioctl(fd, VT_ACTIVATE, 5);
     ioctl(fd, VT_ACTIVATE, 1);
     close(fd);
-    system("setterm -cursor on");
+    
+    MALI_SetTTYCursor(SDL_TRUE);
 
 #ifdef SDL_INPUT_LINUXEV
     SDL_EVDEV_Quit();

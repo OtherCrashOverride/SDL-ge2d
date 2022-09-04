@@ -143,14 +143,13 @@ MALI_Reset_Orientation_Rotation(_THIS, SDL_VideoDisplay *display, SDL_DisplayDat
     if ((data->rotation & 1) == 0) {
         display->current_mode.w = data->vinfo.xres;
         display->current_mode.h = data->vinfo.yres;
-        display->desktop_mode.w = data->vinfo.xres;
-        display->desktop_mode.h = data->vinfo.yres;
     } else {
         display->current_mode.w = data->vinfo.yres;
         display->current_mode.h = data->vinfo.xres;
-        display->desktop_mode.w = data->vinfo.yres;
-        display->desktop_mode.h = data->vinfo.xres;
     }
+
+    display->desktop_mode.w = display->current_mode.w;
+    display->desktop_mode.h = display->current_mode.h;
 }
 
 int

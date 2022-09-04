@@ -14,10 +14,12 @@ static GLchar* blit_vert_fmt =
 "#version 100\n"
 "varying vec2 vTexCoord;\n"
 "attribute vec2 aCoord;\n"
+"uniform vec2 aRatio;\n"
 "void main() {\n"
-"   vTexCoord = ((aCoord + 1.0) / 2.0);\n"
+"   vTexCoord = aCoord;\n"
 "   %s\n"
-"   gl_Position = vec4(aCoord, 0.0, 1.0);\n"
+"   gl_Position = vec4(aCoord * aRatio, 0.0, 1.0);\n"
+"   gl_Position.xy -= vec2(0.5, 0.5) * aRatio;\n"
 "}";
 
 static GLchar* blit_frag =
@@ -70,6 +72,18 @@ MALI_Blitter_CreateContext(_THIS, EGLSurface egl_surface)
     return (SDL_GLContext) egl_context;
 }
 
+static void
+get_aspect_ratio(float *ratio_x, float *ratio_y, float w1, float h1, float w2, float h2)
+{
+    if (w1 / h1 > w2 / h2) {
+        *ratio_x = 2;
+        *ratio_y = 2 * (h1 / w1) * (w2 / h2);
+    } else {
+        *ratio_x = 2 * (w1 / h1) * (h2 / w2);
+        *ratio_y = 2;
+    }
+}
+
 #define fourcc_code(a, b, c, d) ((__u32)(a) | ((__u32)(b) << 8) | \
 				 ((__u32)(c) << 16) | ((__u32)(d) << 24))
 
@@ -78,6 +92,7 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
 {
     GLchar msg[2048] = {}, blit_vert[2048] = {};
     const GLchar *sources[2] = { blit_vert, blit_frag };
+    float ratio_x, ratio_y;
 
     /* Attempt to initialize necessary functions */
     #define SDL_PROC(ret,func,params) \
@@ -139,6 +154,7 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->glLinkProgram(blitter->prog);
     blitter->loc_aCoord = blitter->glGetAttribLocation(blitter->prog, "aCoord");
     blitter->loc_uFBOtex = blitter->glGetUniformLocation(blitter->prog, "uFBOTex");
+    blitter->loc_aRatio = blitter->glGetUniformLocation(blitter->prog, "aRatio");
     blitter->glGetProgramInfoLog(blitter->prog, sizeof(msg), NULL, msg);
     SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Program Info: %s\n", msg);
 
@@ -147,7 +163,18 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->glUniform1i(blitter->loc_uFBOtex, 0);
 
     /* Setup for blitting */
-    /* Setup viewport */
+    /* Setup viewport and display ratio */
+    if (!(rotation & 1)) {
+        get_aspect_ratio(&ratio_x, &ratio_y, 
+            blitter->plane_width, blitter->plane_height,
+            blitter->viewport_width, blitter->viewport_height);
+    }
+    else {
+        get_aspect_ratio(&ratio_x, &ratio_y, 
+            blitter->plane_height, blitter->plane_width,
+            blitter->viewport_width, blitter->viewport_height);
+    }
+    blitter->glUniform2f(blitter->loc_aRatio, ratio_x, ratio_y);
     blitter->glViewport(0, 0, blitter->viewport_width, blitter->viewport_height);
 
     /* Generate buffers */
@@ -196,10 +223,10 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
 void MALI_Blitter_Blit(_THIS, MALI_Blitter *blitter, int texture)
 {
     static GLfloat vert[] = {
-        -1.0f, -1.0f,
-        -1.0f,  1.0f,
-         1.0f, -1.0f,
-         1.0f,  1.0f
+        0.0f, 0.0f,
+        0.0f, 1.0f,
+        1.0f, 0.0f,
+        1.0f, 1.0f
     };
 
     blitter->glBindVertexArrayOES(blitter->vao);
@@ -274,7 +301,7 @@ int MALI_TripleBufferingThread(void *data)
             EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, 
             EGL_FOREVER_NV))
         {
-            blitter.glClearColor(0.0, 1.0, 0.0, 1.0);
+            blitter.glClearColor(0.0, 0.0, 0.0, 1.0);
             blitter.glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             MALI_Blitter_Blit(_this, &blitter, windowdata->current_page);
             _this->egl_data->eglSwapBuffers(_this->egl_data->egl_display, blitter.surface);

@@ -74,6 +74,7 @@ int MALI_CreateWindow(_THIS, SDL_Window * window);
 void MALI_SetWindowTitle(_THIS, SDL_Window * window);
 void MALI_SetWindowPosition(_THIS, SDL_Window * window);
 void MALI_SetWindowSize(_THIS, SDL_Window * window);
+void MALI_SetWindowFullscreen(_THIS, SDL_Window * window, SDL_VideoDisplay * display, SDL_bool fullscreen);
 void MALI_ShowWindow(_THIS, SDL_Window * window);
 void MALI_HideWindow(_THIS, SDL_Window * window);
 void MALI_DestroyWindow(_THIS, SDL_Window * window);

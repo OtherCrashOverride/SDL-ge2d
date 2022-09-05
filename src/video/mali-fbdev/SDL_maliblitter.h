@@ -16,7 +16,7 @@ typedef struct MALI_Blitter {
     EGLSurface *surface;
     SDL_GLContext *context;
     GLuint frag, vert, prog, vbo, vao;
-    GLint loc_aVertCoord, loc_aTexCoord, loc_uFBOtex, loc_uProj;
+    GLint loc_aVertCoord, loc_aTexCoord, loc_uFBOtex, loc_uProj, loc_uTexSize, loc_uScale;
     GLsizei viewport_width, viewport_height;
     GLint plane_width, plane_height, plane_pitch;
 

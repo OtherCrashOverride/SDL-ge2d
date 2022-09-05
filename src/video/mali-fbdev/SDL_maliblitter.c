@@ -21,19 +21,41 @@ static GLchar* blit_vert_fmt =
 "attribute vec2 aVertCoord;\n"
 "attribute vec2 aTexCoord;\n"
 "uniform mat4 uProj;"
+"uniform vec2 uTexSize;\n"
 "void main() {\n"
-"   vTexCoord = aTexCoord;\n"
+"   %s\n"
 "   %s\n"
 "   gl_Position = uProj * vec4(aVertCoord, 0.0, 1.0);\n"
 "}";
 
-static GLchar* blit_frag =
+static GLchar* blit_frag_standard =
 "#version 100\n"
 "precision mediump float;"
 "varying vec2 vTexCoord;\n"
 "uniform sampler2D uFBOTex;\n"
+"uniform vec2 uTexSize;\n"
+"uniform vec2 uScale;\n"
 "void main() {\n"
+"   vec2 texel_floored = floor(vTexCoord);\n"
 "   gl_FragColor = texture2D(uFBOTex, vTexCoord);\n"
+"}\n";
+
+// Ported from TheMaister's sharp-bilinear-simple.slang
+static GLchar* blit_frag_hq =
+"#version 100\n"
+"precision mediump float;"
+"varying vec2 vTexCoord;\n"
+"uniform sampler2D uFBOTex;\n"
+"uniform vec2 uTexSize;\n"
+"uniform vec2 uScale;\n"
+"void main() {\n"
+"   vec2 texel_floored = floor(vTexCoord);\n"
+"   vec2 s = fract(vTexCoord);\n"
+"   vec2 region_range = 0.5 - 0.5 / uScale;\n"
+"   vec2 center_dist = s - 0.5;\n"
+"   vec2 f = (center_dist - clamp(center_dist, -region_range, region_range)) * uScale + 0.5;\n"
+"   vec2 mod_texel = texel_floored + f;\n"
+"   gl_FragColor = texture2D(uFBOTex, mod_texel / uTexSize);\n"
 "}\n";
 
 SDL_GLContext
@@ -78,7 +100,7 @@ MALI_Blitter_CreateContext(_THIS, EGLSurface egl_surface)
 }
 
 static void
-get_aspect_correct_coords(int viewport[2], int plane[2], int rotation, GLfloat vert[4][4])
+get_aspect_correct_coords(int viewport[2], int plane[2], int rotation, GLfloat vert[4][4], GLfloat scale[2])
 {
     float aspect_plane, aspect_viewport, ratio_x, ratio_y;
     int shift_x, shift_y, temp;
@@ -106,11 +128,21 @@ get_aspect_correct_coords(int viewport[2], int plane[2], int rotation, GLfloat v
         shift_y = (viewport[1] - ratio_y) / 2.0f;
     }
 
+    // Instead of normalized UVs, use full texture size.
+    vert[0][2] = (int)(0.0f * plane[0]); vert[0][3] = (int)(0.0f * plane[1]);
+    vert[1][2] = (int)(0.0f * plane[0]); vert[1][3] = (int)(1.0f * plane[1]);
+    vert[2][2] = (int)(1.0f * plane[0]); vert[2][3] = (int)(0.0f * plane[1]);
+    vert[3][2] = (int)(1.0f * plane[0]); vert[3][3] = (int)(1.0f * plane[1]);
+
     // Get aspect corrected sizes within pixel boundaries
-    vert[0][0] = (int)(vert[0][0] * ratio_x) + shift_x; vert[0][1] = (int)(vert[0][1] * ratio_y) + shift_y;
-    vert[1][0] = (int)(vert[1][0] * ratio_x) + shift_x; vert[1][1] = (int)(vert[1][1] * ratio_y) + shift_y;
-    vert[2][0] = (int)(vert[2][0] * ratio_x) + shift_x; vert[2][1] = (int)(vert[2][1] * ratio_y) + shift_y;
-    vert[3][0] = (int)(vert[3][0] * ratio_x) + shift_x; vert[3][1] = (int)(vert[3][1] * ratio_y) + shift_y;
+    vert[0][0] = (int)(0.0f * ratio_x) + shift_x; vert[0][1] = (int)(0.0f * ratio_y) + shift_y;
+    vert[1][0] = (int)(0.0f * ratio_x) + shift_x; vert[1][1] = (int)(1.0f * ratio_y) + shift_y;
+    vert[2][0] = (int)(1.0f * ratio_x) + shift_x; vert[2][1] = (int)(0.0f * ratio_y) + shift_y;
+    vert[3][0] = (int)(1.0f * ratio_x) + shift_x; vert[3][1] = (int)(1.0f * ratio_y) + shift_y;
+
+    // Get scale, for filtering.
+    scale[0] = ratio_x / plane[0];
+    scale[1] = ratio_y / plane[1];
 }
 
 static
@@ -131,15 +163,18 @@ void mat_ortho(float left, float right, float bottom, float top, float Result[4]
 int
 MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation)
 {
+    char *use_hq_scaler;
     GLchar msg[2048] = {}, blit_vert[2048] = {};
-    const GLchar *sources[2] = { blit_vert, blit_frag };
+    const GLchar *sources[2] = { blit_vert, blit_frag_standard };
     float mat_projection[4][4];
-    float vert_buffer_data[4][4] = {
-        {0.0f, 0.0f, 0.0f, 0.0f},
-        {0.0f, 1.0f, 0.0f, 1.0f},
-        {1.0f, 0.0f, 1.0f, 0.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f}
-    };
+    float vert_buffer_data[4][4];
+    float scale[2];
+
+    if ((use_hq_scaler = SDL_getenv("SDL_MALI_HQ_SCALER")) != NULL && *use_hq_scaler == '1') {
+        sources[1] = blit_frag_hq;
+    } else {
+        use_hq_scaler = NULL;
+    }
 
     /* Attempt to initialize necessary functions */
     #define SDL_PROC(ret,func,params) \
@@ -173,7 +208,11 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     }
 
     /* Setup vertex shader coord orientation */
-    SDL_snprintf(blit_vert, sizeof(blit_vert), blit_vert_fmt, 
+    SDL_snprintf(blit_vert, sizeof(blit_vert), blit_vert_fmt,
+        /* scalers */
+        (use_hq_scaler) ? "vTexCoord = aTexCoord;"
+                        : "vTexCoord = aTexCoord / uTexSize;",
+        /* rotation */
         (rotation == 0) ? "" :
         (rotation == 1) ? "vTexCoord = vec2(vTexCoord.y, -vTexCoord.x);" :
         (rotation == 2) ? "vTexCoord = vec2(-vTexCoord.x, -vTexCoord.y);" :
@@ -203,6 +242,8 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->loc_aTexCoord = blitter->glGetAttribLocation(blitter->prog, "aTexCoord");
     blitter->loc_uFBOtex = blitter->glGetUniformLocation(blitter->prog, "uFBOTex");
     blitter->loc_uProj = blitter->glGetUniformLocation(blitter->prog, "uProj");
+    blitter->loc_uTexSize = blitter->glGetUniformLocation(blitter->prog, "uTexSize");
+    blitter->loc_uScale = blitter->glGetUniformLocation(blitter->prog, "uScale");
 
     blitter->glGetProgramInfoLog(blitter->prog, sizeof(msg), NULL, msg);
     SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Program Info: %s\n", msg);
@@ -217,12 +258,18 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
         (int [2]){blitter->viewport_width, blitter->viewport_height},
         (int [2]){blitter->plane_width, blitter->plane_height},
         rotation,
-        vert_buffer_data
+        vert_buffer_data,
+        scale
     );
 
-    /* Setup viewport, projection */
+    /* Setup viewport, projection, scale, texture size */
     blitter->glViewport(0, 0, blitter->viewport_width, blitter->viewport_height);
     blitter->glUniformMatrix4fv(blitter->loc_uProj, 1, 0, (GLfloat*)mat_projection);
+    blitter->glUniform2f(blitter->loc_uScale, scale[0], scale[1]);
+    if (!(rotation & 1))
+        blitter->glUniform2f(blitter->loc_uTexSize, blitter->plane_width, blitter->plane_height);
+    else
+        blitter->glUniform2f(blitter->loc_uTexSize, blitter->plane_height, blitter->plane_width);
 
     /* Generate buffers */
     blitter->glGenBuffers(1, &blitter->vbo);
@@ -262,8 +309,16 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
         blitter->glGenTextures(1, &blitter->planes[i].texture);
         blitter->glActiveTexture(GL_TEXTURE0);
         blitter->glBindTexture(GL_TEXTURE_2D, blitter->planes[i].texture);
-        blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+        blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+        if (use_hq_scaler) {
+            // hq scaler requires bilinear filtering to optimize texel fetch count
+            blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        } else {
+            blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);            
+        }
         blitter->glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, blitter->planes[i].image);
     }
 

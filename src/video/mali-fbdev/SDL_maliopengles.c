@@ -30,8 +30,8 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
     windowdata->flip_page = page;
 
     surf = windowdata->surface[windowdata->flip_page].egl_surface;
-    r = _this->egl_data->eglMakeCurrent(_this->egl_data->egl_display, surf, surf, _this->current_glctx);
     windowdata->surface[windowdata->new_page].fence = _this->egl_data->eglCreateSyncKHR(_this->egl_data->egl_display, EGL_SYNC_FENCE_KHR, NULL);
+    r = _this->egl_data->eglMakeCurrent(_this->egl_data->egl_display, surf, surf, _this->current_glctx);
 
     SDL_CondSignal(windowdata->triplebuf_cond);
     SDL_UnlockMutex(windowdata->triplebuf_mutex);

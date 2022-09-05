@@ -10,16 +10,21 @@
 #include "SDL_maliopengles.h"
 #include "SDL_maliblitter.h"
 
+/* used to simplify code */
+typedef struct mat4 {
+    GLfloat v[16];
+} mat4;
+
 static GLchar* blit_vert_fmt =
 "#version 100\n"
 "varying vec2 vTexCoord;\n"
-"attribute vec2 aCoord;\n"
-"uniform vec2 aRatio;\n"
+"attribute vec2 aVertCoord;\n"
+"attribute vec2 aTexCoord;\n"
+"uniform mat4 uProj;"
 "void main() {\n"
-"   vTexCoord = aCoord;\n"
+"   vTexCoord = aTexCoord;\n"
 "   %s\n"
-"   gl_Position = vec4(aCoord * aRatio, 0.0, 1.0);\n"
-"   gl_Position.xy -= vec2(0.5, 0.5) * aRatio;\n"
+"   gl_Position = uProj * vec4(aVertCoord, 0.0, 1.0);\n"
 "}";
 
 static GLchar* blit_frag =
@@ -73,15 +78,51 @@ MALI_Blitter_CreateContext(_THIS, EGLSurface egl_surface)
 }
 
 static void
-get_aspect_ratio(float *ratio_x, float *ratio_y, float w1, float h1, float w2, float h2)
+get_aspect_correct_coords(int viewport[2], int plane[2], int rotation, GLfloat vert[4][4])
 {
-    if (w1 / h1 > w2 / h2) {
-        *ratio_x = 2;
-        *ratio_y = 2 * (h1 / w1) * (w2 / h2);
-    } else {
-        *ratio_x = 2 * (w1 / h1) * (h2 / w2);
-        *ratio_y = 2;
+    float aspect_plane, aspect_viewport, ratio_x, ratio_y;
+    int shift_x, shift_y, temp;
+    aspect_plane = (float)plane[0] / plane[1];
+    aspect_viewport = (float)viewport[0] / viewport[1];
+
+    // when sideways, invert plane coords
+    if (rotation & 1) {
+        temp = plane[0];
+        plane[0] = plane[1];
+        plane[1] = temp;
     }
+
+    if (aspect_viewport > aspect_plane) {
+        // viewport wider than plane
+        ratio_x = plane[0] * ((float)viewport[1] / plane[1]);
+        ratio_y = viewport[1];
+        shift_x = (viewport[0] - ratio_x) / 2.0f;
+        shift_y = 0;
+    } else {
+        // plane wider than viewport
+        ratio_x = viewport[0];
+        ratio_y = plane[1] * ((float)viewport[0] / plane[0]);
+        shift_x = 0;
+        shift_y = (viewport[1] - ratio_y) / 2.0f;
+    }
+
+    // Get aspect corrected sizes within pixel boundaries
+    vert[0][0] = (int)(vert[0][0] * ratio_x) + shift_x; vert[0][1] = (int)(vert[0][1] * ratio_y) + shift_y;
+    vert[1][0] = (int)(vert[1][0] * ratio_x) + shift_x; vert[1][1] = (int)(vert[1][1] * ratio_y) + shift_y;
+    vert[2][0] = (int)(vert[2][0] * ratio_x) + shift_x; vert[2][1] = (int)(vert[2][1] * ratio_y) + shift_y;
+    vert[3][0] = (int)(vert[3][0] * ratio_x) + shift_x; vert[3][1] = (int)(vert[3][1] * ratio_y) + shift_y;
+}
+
+static
+void mat_ortho(float left, float right, float bottom, float top, float Result[4][4])
+{
+    *(mat4*)Result = (mat4){{[0 ... 15] = 0}};
+    Result[0][0] = 2.0f / (right - left);
+    Result[1][1] = 2.0f / (top - bottom);
+    Result[2][2] = -1.0f;
+    Result[3][0] = - (right + left) / (right - left);
+    Result[3][1] = - (top + bottom) / (top - bottom);
+    Result[3][3] = 1.0f;
 }
 
 #define fourcc_code(a, b, c, d) ((__u32)(a) | ((__u32)(b) << 8) | \
@@ -92,7 +133,13 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
 {
     GLchar msg[2048] = {}, blit_vert[2048] = {};
     const GLchar *sources[2] = { blit_vert, blit_frag };
-    float ratio_x, ratio_y;
+    float mat_projection[4][4];
+    float vert_buffer_data[4][4] = {
+        {0.0f, 0.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 1.0f, 0.0f},
+        {1.0f, 1.0f, 1.0f, 1.0f}
+    };
 
     /* Attempt to initialize necessary functions */
     #define SDL_PROC(ret,func,params) \
@@ -152,9 +199,11 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->glAttachShader(blitter->prog, blitter->frag);
 
     blitter->glLinkProgram(blitter->prog);
-    blitter->loc_aCoord = blitter->glGetAttribLocation(blitter->prog, "aCoord");
+    blitter->loc_aVertCoord = blitter->glGetAttribLocation(blitter->prog, "aVertCoord");
+    blitter->loc_aTexCoord = blitter->glGetAttribLocation(blitter->prog, "aTexCoord");
     blitter->loc_uFBOtex = blitter->glGetUniformLocation(blitter->prog, "uFBOTex");
-    blitter->loc_aRatio = blitter->glGetUniformLocation(blitter->prog, "aRatio");
+    blitter->loc_uProj = blitter->glGetUniformLocation(blitter->prog, "uProj");
+
     blitter->glGetProgramInfoLog(blitter->prog, sizeof(msg), NULL, msg);
     SDL_LogDebug(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: Blitter Program Info: %s\n", msg);
 
@@ -162,20 +211,18 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->glUseProgram(blitter->prog);
     blitter->glUniform1i(blitter->loc_uFBOtex, 0);
 
-    /* Setup for blitting */
-    /* Setup viewport and display ratio */
-    if (!(rotation & 1)) {
-        get_aspect_ratio(&ratio_x, &ratio_y, 
-            blitter->plane_width, blitter->plane_height,
-            blitter->viewport_width, blitter->viewport_height);
-    }
-    else {
-        get_aspect_ratio(&ratio_x, &ratio_y, 
-            blitter->plane_height, blitter->plane_width,
-            blitter->viewport_width, blitter->viewport_height);
-    }
-    blitter->glUniform2f(blitter->loc_aRatio, ratio_x, ratio_y);
+    /* Prepare projection and aspect corrected bounds */
+    mat_ortho(0, blitter->viewport_width, 0, blitter->viewport_height, mat_projection);
+    get_aspect_correct_coords(
+        (int [2]){blitter->viewport_width, blitter->viewport_height},
+        (int [2]){blitter->plane_width, blitter->plane_height},
+        rotation,
+        vert_buffer_data
+    );
+
+    /* Setup viewport, projection */
     blitter->glViewport(0, 0, blitter->viewport_width, blitter->viewport_height);
+    blitter->glUniformMatrix4fv(blitter->loc_uProj, 1, 0, (GLfloat*)mat_projection);
 
     /* Generate buffers */
     blitter->glGenBuffers(1, &blitter->vbo);
@@ -184,8 +231,11 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     /* Populate buffers */
     blitter->glBindVertexArrayOES(blitter->vao);
     blitter->glBindBuffer(GL_ARRAY_BUFFER, blitter->vbo);
-    blitter->glEnableVertexAttribArray(blitter->loc_aCoord);
-    blitter->glVertexAttribPointer(blitter->loc_aCoord, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), 0);
+    blitter->glEnableVertexAttribArray(blitter->loc_aVertCoord);
+    blitter->glEnableVertexAttribArray(blitter->loc_aTexCoord);
+    blitter->glVertexAttribPointer(blitter->loc_aVertCoord, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0 * sizeof(float));
+    blitter->glVertexAttribPointer(blitter->loc_aTexCoord, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 2 * sizeof(float));
+    blitter->glBufferData(GL_ARRAY_BUFFER, sizeof(vert_buffer_data), vert_buffer_data, GL_STATIC_DRAW);
 
     for (int i = 0; i < 3; i++) {
         EGLint attribute_list[] = {
@@ -213,7 +263,7 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
         blitter->glActiveTexture(GL_TEXTURE0);
         blitter->glBindTexture(GL_TEXTURE_2D, blitter->planes[i].texture);
         blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        blitter->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         blitter->glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, blitter->planes[i].image);
     }
 
@@ -222,16 +272,8 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
 
 void MALI_Blitter_Blit(_THIS, MALI_Blitter *blitter, int texture)
 {
-    static GLfloat vert[] = {
-        0.0f, 0.0f,
-        0.0f, 1.0f,
-        1.0f, 0.0f,
-        1.0f, 1.0f
-    };
-
     blitter->glBindVertexArrayOES(blitter->vao);
     blitter->glBindTexture(GL_TEXTURE_2D, blitter->planes[texture].texture);
-    blitter->glBufferData(GL_ARRAY_BUFFER, sizeof(vert), vert, GL_STATIC_DRAW);
     blitter->glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 

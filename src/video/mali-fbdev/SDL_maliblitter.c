@@ -279,6 +279,7 @@ void MALI_Blitter_Blit(_THIS, MALI_Blitter *blitter, int texture)
 
 int MALI_TripleBufferingThread(void *data)
 {
+    int prevSwapInterval = -1;
     unsigned int page;
     MALI_EGL_Surface *current_surface;
 	SDL_WindowData *windowdata;
@@ -327,6 +328,11 @@ int MALI_TripleBufferingThread(void *data)
         SDL_CondWait(windowdata->triplebuf_cond, windowdata->triplebuf_mutex);
 		if (windowdata->triplebuf_thread_stop)
 			break;
+
+        if (prevSwapInterval != windowdata->swapInterval) {
+            _this->egl_data->eglSwapInterval(_this->egl_data->egl_display, windowdata->swapInterval);
+            prevSwapInterval = windowdata->swapInterval;
+        }
 
 		/* Flip the most recent back buffer with the front buffer */
 		page = windowdata->current_page;

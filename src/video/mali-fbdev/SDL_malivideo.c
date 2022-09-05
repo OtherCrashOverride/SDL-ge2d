@@ -60,7 +60,7 @@ MALI_GLES_SetSwapInterval(_THIS, int interval)
 
     windowdata = (SDL_WindowData *)_this->windows->driverdata;
     windowdata->swapInterval = interval != 0;
-    return windowdata->swapInterval;
+    return 0;
 }
 
 static int

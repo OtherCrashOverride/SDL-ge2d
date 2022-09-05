@@ -382,10 +382,18 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
     displaydata = display->driverdata;
 
     /* Allocate window internal data */
-    windowdata = (SDL_WindowData *) SDL_calloc(1, sizeof(SDL_WindowData));
+    windowdata = (SDL_WindowData *) SDL_malloc(sizeof(SDL_WindowData));
     if (windowdata == NULL) {
         return SDL_OutOfMemory();
     }
+
+    /* Initialize defaults for SDL_WindowData */
+    *windowdata = (SDL_WindowData){
+        .swapInterval = 1,
+        .current_page = 0,
+        .flip_page = 1,
+        .new_page = 2
+    };
 
     /* OpenGL ES is the law here */
     window->flags |= SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
@@ -431,9 +439,6 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
     /* Populate triplebuffering data and threads */
     MALI_TripleBufferInit(windowdata);
     windowdata->triplebuf_thread = SDL_CreateThread(MALI_TripleBufferingThread, "MALI_TripleBufferingThread", _this);
-    windowdata->current_page = 0;
-    windowdata->flip_page = 1;
-    windowdata->new_page = 2;
 
     /* Wait until the triplebuf thread is ready */
     SDL_LockMutex(windowdata->triplebuf_mutex);

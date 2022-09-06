@@ -104,8 +104,6 @@ get_aspect_correct_coords(int viewport[2], int plane[2], int rotation, GLfloat v
 {
     float aspect_plane, aspect_viewport, ratio_x, ratio_y;
     int shift_x, shift_y, temp;
-    aspect_plane = (float)plane[0] / plane[1];
-    aspect_viewport = (float)viewport[0] / viewport[1];
 
     // when sideways, invert plane coords
     if (rotation & 1) {
@@ -113,6 +111,10 @@ get_aspect_correct_coords(int viewport[2], int plane[2], int rotation, GLfloat v
         plane[0] = plane[1];
         plane[1] = temp;
     }
+
+    // Choose which edge to touch
+    aspect_plane = (float)plane[0] / plane[1];
+    aspect_viewport = (float)viewport[0] / viewport[1];
 
     if (aspect_viewport > aspect_plane) {
         // viewport wider than plane
@@ -210,7 +212,7 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     /* Setup vertex shader coord orientation */
     SDL_snprintf(blit_vert, sizeof(blit_vert), blit_vert_fmt,
         /* rotation */
-        (rotation == 0) ? "" :
+        (rotation == 0) ? "vTexCoord = aTexCoord;" :
         (rotation == 1) ? "vTexCoord = vec2(aTexCoord.y, -aTexCoord.x);" :
         (rotation == 2) ? "vTexCoord = vec2(-aTexCoord.x, -aTexCoord.y);" :
         (rotation == 3) ? "vTexCoord = vec2(-aTexCoord.y, aTexCoord.x);" :
@@ -266,10 +268,7 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->glViewport(0, 0, blitter->viewport_width, blitter->viewport_height);
     blitter->glUniformMatrix4fv(blitter->loc_uProj, 1, 0, (GLfloat*)mat_projection);
     blitter->glUniform2f(blitter->loc_uScale, scale[0], scale[1]);
-    if (!(rotation & 1))
-        blitter->glUniform2f(blitter->loc_uTexSize, blitter->plane_height, blitter->plane_width);
-    else
-        blitter->glUniform2f(blitter->loc_uTexSize, blitter->plane_width, blitter->plane_height);
+    blitter->glUniform2f(blitter->loc_uTexSize, blitter->plane_width, blitter->plane_height);
 
     /* Generate buffers */
     blitter->glGenBuffers(1, &blitter->vbo);

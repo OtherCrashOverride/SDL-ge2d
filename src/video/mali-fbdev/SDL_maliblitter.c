@@ -209,15 +209,15 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
 
     /* Setup vertex shader coord orientation */
     SDL_snprintf(blit_vert, sizeof(blit_vert), blit_vert_fmt,
-        /* scalers */
-        (use_hq_scaler) ? "vTexCoord = aTexCoord;"
-                        : "vTexCoord = aTexCoord / uTexSize;",
         /* rotation */
         (rotation == 0) ? "" :
-        (rotation == 1) ? "vTexCoord = vec2(vTexCoord.y, -vTexCoord.x);" :
-        (rotation == 2) ? "vTexCoord = vec2(-vTexCoord.x, -vTexCoord.y);" :
-        (rotation == 3) ? "vTexCoord = vec2(-vTexCoord.y, vTexCoord.x);" :
-        "#error Orientation out of scope");
+        (rotation == 1) ? "vTexCoord = vec2(aTexCoord.y, -aTexCoord.x);" :
+        (rotation == 2) ? "vTexCoord = vec2(-aTexCoord.x, -aTexCoord.y);" :
+        (rotation == 3) ? "vTexCoord = vec2(-aTexCoord.y, aTexCoord.x);" :
+        "#error Orientation out of scope",
+        /* scalers */
+        (use_hq_scaler) ? "vTexCoord = vTexCoord;"
+                        : "vTexCoord = vTexCoord / uTexSize;");
 
     /* Compile vertex shader */
     blitter->vert = blitter->glCreateShader(GL_VERTEX_SHADER);
@@ -267,9 +267,9 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     blitter->glUniformMatrix4fv(blitter->loc_uProj, 1, 0, (GLfloat*)mat_projection);
     blitter->glUniform2f(blitter->loc_uScale, scale[0], scale[1]);
     if (!(rotation & 1))
-        blitter->glUniform2f(blitter->loc_uTexSize, blitter->plane_width, blitter->plane_height);
-    else
         blitter->glUniform2f(blitter->loc_uTexSize, blitter->plane_height, blitter->plane_width);
+    else
+        blitter->glUniform2f(blitter->loc_uTexSize, blitter->plane_width, blitter->plane_height);
 
     /* Generate buffers */
     blitter->glGenBuffers(1, &blitter->vbo);

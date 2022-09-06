@@ -379,12 +379,10 @@ int MALI_TripleBufferingThread(void *data)
             /* 
              * Reset vinfo, otherwise applications can get stuck. This is done
              * a bit late to avoid applications getting rid of the splash screen.
-             * Previously, we would set yres * 3 here, but all that seems to do is
-             * cause the display to flicker on mode changes since we're already triple-buffered
-             * by the swapchain created anyways.
+             * Failing to set yres_virtual = 3 causes the display to tear.
              */
             displaydata->vinfo.yoffset = 0;
-            displaydata->vinfo.yres_virtual = displaydata->vinfo.yres * 1;
+            displaydata->vinfo.yres_virtual = displaydata->vinfo.yres * 3;
             if (ioctl(displaydata->fb_fd, FBIOPUT_VSCREENINFO, &displaydata->vinfo) < 0) {
                 MALI_VideoQuit(_this);
                 return SDL_SetError("mali-fbdev: Could not put framebuffer information");

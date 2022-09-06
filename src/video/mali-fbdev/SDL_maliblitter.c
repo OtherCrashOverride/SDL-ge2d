@@ -160,7 +160,7 @@ void mat_ortho(float left, float right, float bottom, float top, float Result[4]
 }
 
 #define fourcc_code(a, b, c, d) ((__u32)(a) | ((__u32)(b) << 8) | \
-				 ((__u32)(c) << 16) | ((__u32)(d) << 24))
+                ((__u32)(c) << 16) | ((__u32)(d) << 24))
 
 int
 MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation)
@@ -337,7 +337,7 @@ int MALI_TripleBufferingThread(void *data)
     int prevSwapInterval = -1;
     unsigned int page;
     MALI_EGL_Surface *current_surface;
-	SDL_WindowData *windowdata;
+    SDL_WindowData *windowdata;
     SDL_DisplayData *displaydata;
     SDL_VideoDevice* _this;
     MALI_Blitter blitter;
@@ -369,10 +369,10 @@ int MALI_TripleBufferingThread(void *data)
     }
 
     /* Signal triplebuf available */
-	SDL_LockMutex(windowdata->triplebuf_mutex);
-	SDL_CondSignal(windowdata->triplebuf_cond);
+    SDL_LockMutex(windowdata->triplebuf_mutex);
+    SDL_CondSignal(windowdata->triplebuf_cond);
 
-	for (;;) {
+    for (;;) {
         SDL_CondWait(windowdata->triplebuf_cond, windowdata->triplebuf_mutex);
         if (first) {
             /* 
@@ -391,22 +391,22 @@ int MALI_TripleBufferingThread(void *data)
         }
         
         if (windowdata->triplebuf_thread_stop)
-			break;
+            break;
 
         if (prevSwapInterval != windowdata->swapInterval) {
             _this->egl_data->eglSwapInterval(_this->egl_data->egl_display, windowdata->swapInterval);
             prevSwapInterval = windowdata->swapInterval;
         }
 
-		/* Flip the most recent back buffer with the front buffer */
-		page = windowdata->current_page;
-		windowdata->current_page = windowdata->new_page;
-		windowdata->new_page = page;
+        /* Flip the most recent back buffer with the front buffer */
+        page = windowdata->current_page;
+        windowdata->current_page = windowdata->new_page;
+        windowdata->new_page = page;
 
         /* select surface to wait and blit */
         current_surface = &windowdata->surface[windowdata->current_page];
 
-		/* wait for fence and flip display */
+        /* wait for fence and flip display */
         if (_this->egl_data->eglClientWaitSyncKHR(
             _this->egl_data->egl_display,
             current_surface->fence, 
@@ -418,7 +418,7 @@ int MALI_TripleBufferingThread(void *data)
             MALI_Blitter_Blit(_this, &blitter, windowdata->current_page);
             _this->egl_data->eglSwapBuffers(_this->egl_data->egl_display, blitter.surface);
         }
-	}
+    }
 
     /* Execution is done, teardown the allocated resources */ 
     _this->egl_data->eglMakeCurrent(_this->egl_data->egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -431,15 +431,15 @@ int MALI_TripleBufferingThread(void *data)
     _this->egl_data->eglReleaseThread();
 
     /* Signal thread done */
-	SDL_UnlockMutex(windowdata->triplebuf_mutex);
-	return 0;
+    SDL_UnlockMutex(windowdata->triplebuf_mutex);
+    return 0;
 }
 
 void MALI_TripleBufferInit(SDL_WindowData *windowdata)
 {
-	windowdata->triplebuf_mutex = SDL_CreateMutex();
-	windowdata->triplebuf_cond = SDL_CreateCond();
-	windowdata->triplebuf_thread = NULL;
+    windowdata->triplebuf_mutex = SDL_CreateMutex();
+    windowdata->triplebuf_cond = SDL_CreateCond();
+    windowdata->triplebuf_thread = NULL;
 }
 
 void MALI_TripleBufferStop(_THIS)
@@ -468,8 +468,8 @@ void MALI_TripleBufferQuit(_THIS)
         return;
 
     MALI_TripleBufferStop(_this);
-	SDL_DestroyMutex(windowdata->triplebuf_mutex);
-	SDL_DestroyCond(windowdata->triplebuf_cond);
+    SDL_DestroyMutex(windowdata->triplebuf_mutex);
+    SDL_DestroyCond(windowdata->triplebuf_cond);
 }
 
 #endif /* SDL_VIDEO_DRIVER_MALI */

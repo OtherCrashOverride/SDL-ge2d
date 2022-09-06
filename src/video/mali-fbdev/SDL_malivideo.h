@@ -49,13 +49,13 @@ typedef struct SDL_WindowData
 {
     int prev_w, prev_h;
     int swapInterval;
-	int flip_page;
-	int current_page;
-	int new_page;
-	SDL_mutex *triplebuf_mutex;
-	SDL_cond *triplebuf_cond;
-	SDL_Thread *triplebuf_thread;
-	int triplebuf_thread_stop;
+    int flip_page;
+    int current_page;
+    int new_page;
+    SDL_mutex *triplebuf_mutex;
+    SDL_cond *triplebuf_cond;
+    SDL_Thread *triplebuf_thread;
+    int triplebuf_thread_stop;
 
     MALI_EGL_Surface surface[3];
 

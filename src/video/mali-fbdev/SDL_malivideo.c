@@ -156,12 +156,14 @@ MALI_Reset_Orientation_Rotation(_THIS, SDL_VideoDisplay *display, SDL_DisplayDat
         data->rotation = (data->rotation + SDL_atoi(rotation)) % 4;
 
     if ((data->rotation & 1) == 0) {
-        display->desktop_mode.w = data->vinfo.xres;
-        display->desktop_mode.h = data->vinfo.yres;
+        display->current_mode.w = data->vinfo.xres;
+        display->current_mode.h = data->vinfo.yres;
     } else {
-        display->desktop_mode.w = data->vinfo.yres;
-        display->desktop_mode.h = data->vinfo.xres;
+        display->current_mode.w = data->vinfo.yres;
+        display->current_mode.h = data->vinfo.xres;
     }
+
+    display->desktop_mode = display->current_mode;
 }
 
 int
@@ -182,6 +184,11 @@ MALI_VideoInit(_THIS)
         return SDL_SetError("mali-fbdev: Could not open framebuffer device");
     }
 
+    /* 
+     * We're only acquiring the info here, changing it is deffered to the blitter thread
+     * since recreating the OpenGL context will require us to reset some parameters,
+     * otherwise the screen gets stuck on a frame after screen resizes.
+     */
     if (ioctl(data->fb_fd, FBIOGET_VSCREENINFO, &data->vinfo) < 0) {
         MALI_VideoQuit(_this);
         return SDL_SetError("mali-fbdev: Could not get framebuffer information");
@@ -214,7 +221,6 @@ MALI_VideoInit(_THIS)
 
     /* Find right side up */
     MALI_Reset_Orientation_Rotation(_this, &display, data);
-    display.current_mode = display.desktop_mode;
     SDL_AddVideoDisplay(&display, SDL_FALSE);
 
 #ifdef SDL_INPUT_LINUXEV
@@ -249,29 +255,6 @@ MALI_VideoQuit(_THIS)
     SDL_EVDEV_Quit();
 #endif
 
-}
-
-void
-MALI_GetDisplayModes(_THIS, SDL_VideoDisplay * display)
-{
-    /* Report desktop mode as the default */
-    SDL_AddDisplayMode(display, &display->current_mode);
-    SDL_AddDisplayMode(display, &display->desktop_mode);
-}
-
-int
-MALI_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
-{
-    SDL_Window *window;
-    window = display->fullscreen_window;
-    if (!window)
-        window = display->device->windows;
-    if (!window)
-        return 0;
-
-    display->current_mode = *mode;
-    MALI_SetWindowSize(_this, window);
-    return 0;
 }
 
 static EGLSurface
@@ -427,6 +410,9 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
         window->h = display->current_mode.h;
     }
 
+    windowdata->prev_w = window->w;
+    windowdata->prev_h = window->h;
+
     /* Initialize DMA_BUF-backed Pixmap surfaces */
     egl_surface = MALI_EGL_InitPixmapSurfaces(_this, window->w, window->h, windowdata, displaydata);
 
@@ -507,6 +493,45 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
     window->driverdata = NULL;
 }
 
+void MALI_MaybeRecreate(_THIS, SDL_Window *window, int w, int h)
+{
+    SDL_WindowData *windowdata;
+    if (!window || (windowdata = window->driverdata) == NULL)
+        return;
+
+    if (windowdata->prev_w == w && windowdata->prev_h == h)
+        return;
+
+    SDL_SendWindowEvent(window, SDL_WINDOWEVENT_RESIZED, w, h);
+    window->w = w;
+    window->h = h;
+    MALI_DestroyWindow(_this, window);
+    MALI_CreateWindow(_this, window);
+}
+
+void
+MALI_GetDisplayModes(_THIS, SDL_VideoDisplay * display)
+{
+    /* Report current_mode mode as the default */
+    SDL_AddDisplayMode(display, &display->current_mode);
+}
+
+int
+MALI_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
+{
+    SDL_Window *window;
+    window = display->fullscreen_window;
+    if (!window)
+        window = display->device->windows;
+    if (!window)
+        return 0;
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_VIDEO, "mali-fbdev: MALI_SetDisplayMode: %dx%d?", mode->w, mode->h);
+    display->current_mode = *mode;
+    MALI_MaybeRecreate(_this, window, mode->w, mode->h);
+    return 0;
+}
+
 void
 MALI_SetWindowTitle(_THIS, SDL_Window * window)
 {
@@ -520,16 +545,14 @@ MALI_SetWindowPosition(_THIS, SDL_Window * window)
 void
 MALI_SetWindowSize(_THIS, SDL_Window * window)
 {
-    MALI_DestroyWindow(_this, window);
-    MALI_CreateWindow(_this, window);
+    MALI_MaybeRecreate(_this, window, window->w, window->h);
 }
 
 void
 MALI_SetWindowFullscreen(_THIS, SDL_Window * window, SDL_VideoDisplay * display, SDL_bool fullscreen)
 {
-    // Might cause applications to change mode twice, this is necessary
-    // for FNA to properly change resolution.
-    MALI_SetWindowSize(_this, window);
+    window->fullscreen_mode = display->current_mode;
+    MALI_MaybeRecreate(_this, window, display->current_mode.w, display->current_mode.h);
 }
 
 void

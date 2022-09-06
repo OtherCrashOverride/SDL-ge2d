@@ -47,6 +47,7 @@ typedef struct MALI_EGL_Surface
 
 typedef struct SDL_WindowData
 {
+    int prev_w, prev_h;
     int swapInterval;
 	int flip_page;
 	int current_page;

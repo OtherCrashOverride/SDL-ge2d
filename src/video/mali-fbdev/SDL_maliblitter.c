@@ -334,6 +334,7 @@ void MALI_Blitter_Blit(_THIS, MALI_Blitter *blitter, int texture)
 
 int MALI_TripleBufferingThread(void *data)
 {
+    int first = 1;
     int prevSwapInterval = -1;
     unsigned int page;
     MALI_EGL_Surface *current_surface;
@@ -368,20 +369,29 @@ int MALI_TripleBufferingThread(void *data)
         SDL_Quit();
     }
 
-    /* Reset yoffset, otherwise applications can get stuck */
-    displaydata->vinfo.yoffset = 0;
-    if (ioctl(displaydata->fb_fd, FBIOPUT_VSCREENINFO, &displaydata->vinfo) < 0) {
-        MALI_VideoQuit(_this);
-        return SDL_SetError("mali-fbdev: Could not put framebuffer information");
-    }
-
     /* Signal triplebuf available */
 	SDL_LockMutex(windowdata->triplebuf_mutex);
 	SDL_CondSignal(windowdata->triplebuf_cond);
 
 	for (;;) {
         SDL_CondWait(windowdata->triplebuf_cond, windowdata->triplebuf_mutex);
-		if (windowdata->triplebuf_thread_stop)
+        if (first) {
+            /* 
+             * Reset vinfo, otherwise applications can get stuck. This is done
+             * a bit late to avoid applications getting rid of the splash screen.
+             */
+            displaydata->vinfo.yoffset = 0;
+            displaydata->vinfo.yres_virtual = displaydata->vinfo.yres * 3;
+
+            if (ioctl(displaydata->fb_fd, FBIOPUT_VSCREENINFO, &displaydata->vinfo) < 0) {
+                MALI_VideoQuit(_this);
+                return SDL_SetError("mali-fbdev: Could not put framebuffer information");
+            }
+
+            first = 0;
+        }
+        
+        if (windowdata->triplebuf_thread_stop)
 			break;
 
         if (prevSwapInterval != windowdata->swapInterval) {

@@ -23,6 +23,8 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
 
     windowdata = (SDL_WindowData*)_this->windows->driverdata;
 
+    // First create the necessary fence
+    windowdata->surface[windowdata->flip_page].fence = _this->egl_data->eglCreateSyncKHR(_this->egl_data->egl_display, EGL_SYNC_FENCE_KHR, NULL);
     SDL_LockMutex(windowdata->triplebuf_mutex);
 
     page = windowdata->new_page;
@@ -30,7 +32,6 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
     windowdata->flip_page = page;
 
     surf = windowdata->surface[windowdata->flip_page].egl_surface;
-    windowdata->surface[windowdata->new_page].fence = _this->egl_data->eglCreateSyncKHR(_this->egl_data->egl_display, EGL_SYNC_FENCE_KHR, NULL);
     r = _this->egl_data->eglMakeCurrent(_this->egl_data->egl_display, surf, surf, _this->current_glctx);
 
     SDL_CondSignal(windowdata->triplebuf_cond);
@@ -45,7 +46,7 @@ MALI_GLES_MakeCurrent(_THIS, SDL_Window * window, SDL_GLContext context)
     SDL_WindowData *windowdata;
     if (window) {
         windowdata = window->driverdata;
-        return SDL_EGL_MakeCurrent(_this, windowdata->surface[windowdata->new_page].egl_surface, context);
+        return SDL_EGL_MakeCurrent(_this, windowdata->surface[windowdata->flip_page].egl_surface, context);
 
     } else {
         return SDL_EGL_MakeCurrent(_this, EGL_NO_SURFACE, context);

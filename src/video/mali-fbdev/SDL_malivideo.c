@@ -187,12 +187,6 @@ MALI_VideoInit(_THIS)
         return SDL_SetError("mali-fbdev: Could not get framebuffer information");
     }
 
-    data->vinfo.yres_virtual = data->vinfo.yres * 2;
-    if (ioctl(data->fb_fd, FBIOPUT_VSCREENINFO, &data->vinfo) < 0) {
-        MALI_VideoQuit(_this);
-        return SDL_SetError("mali-fbdev: Could not get framebuffer information");
-    }
-
     /* Setup ION allocator */
     data->ion_fd = open("/dev/ion", O_RDWR, 0);
     if (data->ion_fd < 0) {

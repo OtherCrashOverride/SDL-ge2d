@@ -41,7 +41,7 @@ static GLchar* blit_frag_standard =
 "}\n";
 
 // Ported from TheMaister's sharp-bilinear-simple.slang
-static GLchar* blit_frag_hq =
+static GLchar* blit_frag_bilinear_simple =
 "#version 100\n"
 "precision mediump float;"
 "varying vec2 vTexCoord;\n"
@@ -56,6 +56,24 @@ static GLchar* blit_frag_hq =
 "   vec2 f = (center_dist - clamp(center_dist, -region_range, region_range)) * uScale + 0.5;\n"
 "   vec2 mod_texel = texel_floored + f;\n"
 "   gl_FragColor = texture2D(uFBOTex, mod_texel / uTexSize);\n"
+"}\n";
+
+// Ported from Iquilez
+static GLchar* blit_frag_quilez =
+"#version 100\n"
+"precision highp float;"
+"varying vec2 vTexCoord;\n"
+"uniform sampler2D uFBOTex;\n"
+"uniform vec2 uTexSize;\n"
+"uniform vec2 uScale;\n"
+"void main() {\n"
+"   vec2 p = vTexCoord + 0.5;"
+"   vec2 i = floor(p);"
+"   vec2 f = p - i;"
+"   f = f*f*f*(f*(f*6.0-15.0)+10.0);"
+"   p = i + f;"
+"   p = (p - 0.5)/uTexSize;"
+"   gl_FragColor = texture2D( uFBOTex, p );"
 "}\n";
 
 SDL_GLContext
@@ -172,8 +190,12 @@ MALI_InitBlitter(_THIS, MALI_Blitter *blitter, NativeWindowType nw, int rotation
     float vert_buffer_data[4][4];
     float scale[2];
 
-    if ((use_hq_scaler = SDL_getenv("SDL_MALI_HQ_SCALER")) != NULL && *use_hq_scaler == '1') {
-        sources[1] = blit_frag_hq;
+    if ((use_hq_scaler = SDL_getenv("SDL_MALI_HQ_SCALER")) != NULL && *use_hq_scaler != '0') {
+        switch (*use_hq_scaler) {
+            case '1': sources[1] = blit_frag_bilinear_simple; break;
+            case '2': sources[1] = blit_frag_quilez; break;
+            default: use_hq_scaler = NULL; break;
+        }
     } else {
         use_hq_scaler = NULL;
     }

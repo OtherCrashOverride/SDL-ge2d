@@ -36,7 +36,7 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
  
     gou_display_present(displaydata->disp, data->surf[0],
             0, 0, gou_surface_width_get(data->surf[0]), gou_surface_height_get(data->surf[0]),
-            false, false,
+            false, true,
             0, 0, displaydata->native_display.width, displaydata->native_display.height);
 
     return r;

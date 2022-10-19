@@ -103,8 +103,6 @@ VideoBootStrap MALI_bootstrap = {
 int
 MALI_VideoInit(_THIS)
 {
-    struct fb_var_screeninfo vinfo;
-    int fd;
     SDL_VideoDisplay display;
     SDL_DisplayMode current_mode;
     SDL_DisplayData *data;
@@ -114,37 +112,6 @@ MALI_VideoInit(_THIS)
         return SDL_OutOfMemory();
     }
 
-#if 0
-    fd = open("/dev/fb0", O_RDWR, 0);
-    if (fd < 0) {
-        return SDL_SetError("mali-fbdev: Could not open framebuffer device");
-    }
-
-    data->ion_fd = open("/dev/ion", O_RDWR, 0);
-    if (data->ion_fd < 0) {
-        return SDL_SetError("mali-fbdev: Could not open ion device");
-    }
-
-    data->ge2d_fd = open("/dev/ge2d", O_RDWR, 0);
-    if (data->ge2d_fd < 0) {
-        close(data->ion_fd);
-        return SDL_SetError("mali-fbdev: Could not open ge2d device");
-    }
-
-    if (ioctl(fd, FBIOGET_VSCREENINFO, &vinfo) < 0) {
-        MALI_VideoQuit(_this);
-        return SDL_SetError("mali-fbdev: Could not get framebuffer information");
-    }
-    /* Enable triple buffering */
-    /*
-    vinfo.yres_virtual = vinfo.yres * 3;
-    if (ioctl(fd, FBIOPUT_VSCREENINFO, vinfo) == -1) {
-	printf("mali-fbdev: Error setting VSCREENINFO\n");
-    }
-    */
-    close(fd);
-    system("setterm -cursor off");
-#endif
     data->disp = gou_display_create();
 
     data->native_display.width = gou_display_width_get(data->disp);
@@ -181,20 +148,7 @@ void
 MALI_VideoQuit(_THIS)
 {
     SDL_DisplayData *displaydata = (SDL_DisplayData*)_this->driverdata;
- #if 0
-    int fd = open("/dev/tty", O_RDWR);
 
-    /* Cleanup after ion and ge2d */
-    close(displaydata->ion_fd);
-    close(displaydata->ge2d_fd);
-    //TODO:: Destroy the other buffers...
-
-    /* Clear the framebuffer and ser cursor on again */
-    ioctl(fd, VT_ACTIVATE, 5);
-    ioctl(fd, VT_ACTIVATE, 1);
-    close(fd);
-    system("setterm -cursor on");
-#endif
     gou_display_destroy(displaydata->disp);
 
 #ifdef SDL_INPUT_LINUXEV
@@ -218,9 +172,7 @@ MALI_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
 
 static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
 {
-    struct ion_fd_data ion_data;
-    struct ion_allocation_data allocation_data;
-    int i, io;
+    int i;
     EGLSurface *surface;
 
     _this->egl_data->egl_surfacetype = EGL_PIXMAP_BIT;
@@ -247,38 +199,11 @@ static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdat
             windowdata->pixmap.planes[i].stride * windowdata->pixmap.height;
         windowdata->pixmap.planes[i].offset = 0;
         windowdata->pixmap.format = MALI_FORMAT_ARGB8888; // appears to be 888X
-
-        // allocation_data = (struct ion_allocation_data){
-        //     .len = windowdata->pixmap.planes[i].size,
-        //     .heap_id_mask = (1 << ION_HEAP_TYPE_DMA),
-        //     .flags = 0
-        // };
-
-        // io = ioctl(displaydata->ion_fd, ION_IOC_ALLOC, &allocation_data);
-        // if (io != 0)
-        // {
-        //     SDL_EGL_SetError("Unable to create backing ION buffers", "ION_IOC_ALLOC");
-        //     return EGL_NO_SURFACE;
-        // }
-
-        // ion_data = (struct ion_fd_data){
-        //     .handle = allocation_data.handle
-        // };
-
-        // io = ioctl(displaydata->ion_fd, ION_IOC_SHARE, &ion_data);
-        // if (io != 0)
-        // {
-        //     SDL_EGL_SetError("Unable to create backing ION buffers", "ION_IOC_SHARE");
-        //     return EGL_NO_SURFACE;
-        // }
-
-        //windowdata->ion_surface[i].handle = allocation_data.handle;
-        //windowdata->ion_surface[i].shared_fd = ion_data.fd;
         windowdata->pixmap.handles[i] = gou_surface_share_fd(windowdata->surf[i]);
     }
 
     windowdata->pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&windowdata->pixmap);
-    SDL_Log("Created pixmap handle %p\n", windowdata->pixmap_handle);
+    SDL_Log("Created pixmap handle %p\n", (void*)windowdata->pixmap_handle);
     
     surface = _this->egl_data->eglCreatePixmapSurface(
             _this->egl_data->egl_display,
@@ -302,7 +227,6 @@ static void MALI_EGL_DestroyPixmapSurface(_THIS, SDL_WindowData *windowdata, SDL
         gou_surface_destroy(windowdata->surf[i]);
         windowdata->surf[i] = NULL;
     }
-
 }
 
 int
@@ -370,7 +294,7 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
             data->egl_surface = EGL_NO_SURFACE;
         }
 
-        MALI_EGL_DestroyPixmapSurface(_this, window, SDL_GetDisplayDriverData(0));
+        MALI_EGL_DestroyPixmapSurface(_this, data, SDL_GetDisplayDriverData(0));
 
         SDL_free(data);
     }

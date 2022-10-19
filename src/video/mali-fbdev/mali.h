@@ -18,6 +18,12 @@
 
 #include <stdint.h>
 
+typedef struct fbdev_window
+{
+	unsigned short width;
+	unsigned short height;
+} fbdev_window;
+
 typedef struct mali_plane {
     // TODO:: check 32bit gondul for sizes
     unsigned long stride;

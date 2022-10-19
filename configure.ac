@@ -2184,7 +2184,7 @@ AC_HELP_STRING([--enable-video-mali], [use Mali EGL video driver [[default=yes]]
 
         if test x$have_mali_egl = xyes; then
             AC_DEFINE(SDL_VIDEO_DRIVER_MALI, 1, [ ])
-            EXTRA_CFLAGS="$EXTRA_CFLAGS -DLINUX -DEGL_API_FB"
+            EXTRA_CFLAGS="$EXTRA_CFLAGS -DLINUX -DEGL_API_FB -DEGL_NO_X11"
             SOURCES="$SOURCES $srcdir/src/video/mali-fbdev/*.c"
             SUMMARY_video="${SUMMARY_video} mali"
             have_video=yes

@@ -22712,7 +22712,7 @@ $as_echo "$have_mali_egl" >&6; }
 
 $as_echo "#define SDL_VIDEO_DRIVER_MALI 1" >>confdefs.h
 
-            EXTRA_CFLAGS="$EXTRA_CFLAGS -DLINUX -DEGL_API_FB"
+            EXTRA_CFLAGS="$EXTRA_CFLAGS -DLINUX -DEGL_API_FB -DEGL_NO_X11"
             SOURCES="$SOURCES $srcdir/src/video/mali-fbdev/*.c"
             SUMMARY_video="${SUMMARY_video} mali"
             have_video=yes

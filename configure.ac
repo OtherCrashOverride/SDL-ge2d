@@ -2174,6 +2174,7 @@ AC_HELP_STRING([--enable-video-mali], [use Mali EGL video driver [[default=yes]]
         AC_TRY_COMPILE([
           #define LINUX
           #define EGL_API_FB
+          #define EGL_NO_X11
           #include <EGL/egl.h>
         ],[
         ],[

@@ -19,6 +19,7 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
     int r = 0;
     SDL_DisplayData *displaydata = SDL_GetDisplayDriverData(0);
     SDL_WindowData *data = window->driverdata;
+    gou_surface_t* gou_surface;
 
     static void (*gl_finish)() = NULL;
 
@@ -34,8 +35,10 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
             int dstX, int dstY, int dstWidth, int dstHeight);
     */
  
-    gou_display_present(displaydata->disp, data->surf[0],
-            0, 0, gou_surface_width_get(data->surf[0]), gou_surface_height_get(data->surf[0]),
+    gou_surface = data->surfaces[0].gou_surface;
+
+    gou_display_present(displaydata->disp, gou_surface,
+            0, 0, gou_surface_width_get(gou_surface), gou_surface_height_get(gou_surface),
             false, true,
             0, 0, displaydata->native_display.width, displaydata->native_display.height);
 

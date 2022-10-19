@@ -30,16 +30,22 @@ typedef struct SDL_DisplayData
     gou_display_t* disp;
 } SDL_DisplayData;
 
+#define MALI_MAX_BUFFERS (3)
+
+
+typedef struct MALI_Surface
+{
+    gou_surface_t* gou_surface;
+    NativePixmapType pixmap_handle;
+    EGLSurface egl_surface;
+} MALI_Surface;
+
 typedef struct SDL_WindowData
 {
-    // A pixmap is backed by multiple ION allocated backbuffers
-    mali_pixmap pixmap;
-    NativePixmapType pixmap_handle;
-
-    // The created EGL Surface is backed by a mali pixmap
+    // This is a 'magic' field name used by the 'SDL_EGL_MakeCurrent_impl' macro
     EGLSurface egl_surface;
 
-    gou_surface_t* surf[3];
+    MALI_Surface surfaces[MALI_MAX_BUFFERS];
 } SDL_WindowData;
 
 /****************************************************************************/

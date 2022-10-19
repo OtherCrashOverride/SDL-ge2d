@@ -1,6 +1,6 @@
 #include "../../SDL_internal.h"
 
-#if SDL_VIDEO_DRIVER_MALI
+//#if SDL_VIDEO_DRIVER_MALI
 
 /* SDL internals */
 #include "../SDL_sysvideo.h"
@@ -170,63 +170,66 @@ MALI_SetDisplayMode(_THIS, SDL_VideoDisplay * display, SDL_DisplayMode * mode)
     return 0;
 }
 
-static EGLSurface *MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
+static MALI_Surface MALI_EGL_CreatePixmapSurface(_THIS, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
 {
-    int i;
-    EGLSurface *surface;
+    MALI_Surface surface;
+    int w;
+    int h;
+    mali_pixmap pixmap;
+
+    memset(&surface, 0, sizeof(surface));
+    surface.egl_surface = EGL_NO_SURFACE;
 
     _this->egl_data->egl_surfacetype = EGL_PIXMAP_BIT;
     if (SDL_EGL_ChooseConfig(_this) != 0) {
-        return EGL_NO_SURFACE;
+        return surface;
     }
 
     if (_this->gl_config.framebuffer_srgb_capable) {
         {
             SDL_SetError("EGL implementation does not support sRGB system framebuffers");
-            return EGL_NO_SURFACE;
+            return surface;
         }
     }
 
+    w = displaydata->native_display.width;
+    h = displaydata->native_display.height;
+
+    surface.gou_surface = gou_surface_create(displaydata->disp, w, h, DRM_FORMAT_ARGB8888);
+
     // Populate pixmap definitions
-    windowdata->pixmap.width = displaydata->native_display.width;
-    windowdata->pixmap.height = displaydata->native_display.height;
-    for (i = 0; i < 3; i++)
-    {
-        windowdata->surf[i] = gou_surface_create(displaydata->disp, windowdata->pixmap.width, windowdata->pixmap.height, DRM_FORMAT_ARGB8888);
+    memset(&pixmap, 0, sizeof(pixmap));
 
-        windowdata->pixmap.planes[i].stride = gou_surface_stride_get(windowdata->surf[i]);
-        windowdata->pixmap.planes[i].size = 
-            windowdata->pixmap.planes[i].stride * windowdata->pixmap.height;
-        windowdata->pixmap.planes[i].offset = 0;
-        windowdata->pixmap.format = MALI_FORMAT_ARGB8888; // appears to be 888X
-        windowdata->pixmap.handles[i] = gou_surface_share_fd(windowdata->surf[i]);
-    }
+    pixmap.width = w;
+    pixmap.height = h;
+    pixmap.format = MALI_FORMAT_ARGB8888; // appears to be 888X
 
-    windowdata->pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&windowdata->pixmap);
-    SDL_Log("Created pixmap handle %p\n", (void*)windowdata->pixmap_handle);
+    pixmap.planes[0].stride = gou_surface_stride_get(surface.gou_surface);
+    pixmap.planes[0].size = 
+    pixmap.planes[0].stride * pixmap.height;
+    pixmap.planes[0].offset = 0;
+    pixmap.handles[0] = gou_surface_share_fd(surface.gou_surface);
+
+
+    surface.pixmap_handle = displaydata->egl_create_pixmap_ID_mapping(&pixmap);
+    SDL_Log("Created pixmap handle %p\n", (void*)surface.pixmap_handle);
     
-    surface = _this->egl_data->eglCreatePixmapSurface(
+    surface.egl_surface = _this->egl_data->eglCreatePixmapSurface(
             _this->egl_data->egl_display,
             _this->egl_data->egl_config,
-            windowdata->pixmap_handle, NULL);
-    if (surface == EGL_NO_SURFACE) {
+            surface.pixmap_handle, NULL);
+    if (surface.egl_surface == EGL_NO_SURFACE) {
         SDL_EGL_SetError("unable to create an EGL window surface", "eglCreatePixmapSurface");
     }
 
     return surface;
 }
 
-static void MALI_EGL_DestroyPixmapSurface(_THIS, SDL_WindowData *windowdata, SDL_DisplayData *displaydata) 
+static void MALI_EGL_DestroyPixmapSurface(_THIS, SDL_WindowData *windowdata, SDL_DisplayData *displaydata, MALI_Surface* surface) 
 {
-    int i;
-
-    windowdata->pixmap.width = displaydata->native_display.width;
-    windowdata->pixmap.height = displaydata->native_display.height;
-    for (i = 0; i < 3; i++)
-    {
-        gou_surface_destroy(windowdata->surf[i]);
-        windowdata->surf[i] = NULL;
-    }
+    _this->egl_data->eglDestroySurface(_this->egl_data->egl_display, surface->egl_surface);
+    // TODO - Destroy native pixmap handle
+    gou_surface_destroy(surface->gou_surface);
 }
 
 int
@@ -234,6 +237,7 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
 {
     SDL_WindowData *windowdata;
     SDL_DisplayData *displaydata;
+    int i;
 
     displaydata = SDL_GetDisplayDriverData(0);
 
@@ -265,7 +269,12 @@ MALI_CreateWindow(_THIS, SDL_Window * window)
         }
     }
 
-    windowdata->egl_surface = MALI_EGL_CreatePixmapSurface(_this, windowdata, displaydata);
+    for (i = 0; i < MALI_MAX_BUFFERS; ++i)
+    {
+        windowdata->surfaces[i] = MALI_EGL_CreatePixmapSurface(_this, windowdata, displaydata);
+    }
+
+    windowdata->egl_surface = windowdata->surfaces[0].egl_surface;
     if (windowdata->egl_surface == EGL_NO_SURFACE) {
         MALI_VideoQuit(_this);
         return SDL_SetError("mali-fbdev: Can't create EGL window surface");
@@ -286,6 +295,7 @@ void
 MALI_DestroyWindow(_THIS, SDL_Window * window)
 {
     SDL_WindowData *data;
+    int i;
 
     data = window->driverdata;
     if (data) {
@@ -294,7 +304,10 @@ MALI_DestroyWindow(_THIS, SDL_Window * window)
             data->egl_surface = EGL_NO_SURFACE;
         }
 
-        MALI_EGL_DestroyPixmapSurface(_this, data, SDL_GetDisplayDriverData(0));
+        for (i = 0; i < MALI_MAX_BUFFERS; ++i)
+        {
+            MALI_EGL_DestroyPixmapSurface(_this, data, SDL_GetDisplayDriverData(0), &data->surfaces[i]);
+        }
 
         SDL_free(data);
     }
@@ -353,5 +366,5 @@ void MALI_PumpEvents(_THIS)
 #endif
 }
 
-#endif /* SDL_VIDEO_DRIVER_MALI */
+//#endif /* SDL_VIDEO_DRIVER_MALI */
 

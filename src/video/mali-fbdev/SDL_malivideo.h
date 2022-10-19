@@ -21,12 +21,17 @@
 #include "ge2d.h"
 #include "ge2d_cmd.h"
 
+#include <stdbool.h>
+#include <gou/display.h>
+#include <gou/surface.h>
+
 typedef struct SDL_DisplayData
 {
     struct fbdev_window native_display;
     NativePixmapType (*egl_create_pixmap_ID_mapping)(mali_pixmap *);
 
     int ge2d_fd, ion_fd;
+    gou_display_t* disp;
 } SDL_DisplayData;
 
 typedef struct SDL_WindowData
@@ -42,6 +47,8 @@ typedef struct SDL_WindowData
 
     // The created EGL Surface is backed by a mali pixmap
     EGLSurface egl_surface;
+
+    gou_surface_t* surf[3];
 } SDL_WindowData;
 
 /****************************************************************************/

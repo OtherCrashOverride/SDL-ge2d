@@ -102,7 +102,11 @@ MALI_Rotate_Blit(_THIS, SDL_Window *window, int rotation)
 
 int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
 {
-    int r;
+
+    int r = 0;
+    SDL_DisplayData *displaydata = SDL_GetDisplayDriverData(0);
+    SDL_WindowData *data = window->driverdata;
+
     static void (*gl_finish)() = NULL;
 
     if (!gl_finish) {
@@ -110,8 +114,23 @@ int MALI_GLES_SwapWindow(_THIS, SDL_Window * window)
     }
 
     gl_finish();
+
+#if 0
     r = SDL_EGL_SwapBuffers(_this, ((SDL_WindowData *) window->driverdata)->egl_surface);
     MALI_Rotate_Blit(_this, window, Rotation_0);
+
+
+#endif
+    /*
+    void gou_display_present(gou_display_t* display, gou_surface_t* surface,
+            int srcX, int srcY, int srcWidth, int srcHeight, bool mirrorX, bool mirrorY,
+            int dstX, int dstY, int dstWidth, int dstHeight);
+    */
+ 
+    gou_display_present(displaydata->disp, data->surf[0],
+            0, 0, gou_surface_width_get(data->surf[0]), gou_surface_height_get(data->surf[0]),
+            false, false,
+            0, 0, displaydata->native_display.width, displaydata->native_display.height);
 
     return r;
 }

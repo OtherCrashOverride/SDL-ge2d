@@ -17,6 +17,17 @@
 #include "SDL_malivideo.h"
 #include "SDL_maliopengles.h"
 
+void
+MALI_GLES_DefaultProfileConfig(_THIS, int *mask, int *major, int *minor)
+{
+    if (!SDL_getenv("SDL_DEFAULT_CONTEXT_PROFILE"))
+    {
+        *mask = SDL_GL_CONTEXT_PROFILE_ES;
+        *major = 2;
+        *minor = 0;
+    }
+}
+
 static void
 MALI_Destroy(SDL_VideoDevice * device)
 {
@@ -69,6 +80,8 @@ MALI_Create()
     device->GL_GetSwapInterval = MALI_GLES_GetSwapInterval;
     device->GL_SwapWindow = MALI_GLES_SwapWindow;
     device->GL_DeleteContext = MALI_GLES_DeleteContext;
+
+    device->GL_DefaultProfileConfig = MALI_GLES_DefaultProfileConfig;
 
     device->PumpEvents = MALI_PumpEvents;
 

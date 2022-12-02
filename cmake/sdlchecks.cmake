@@ -775,6 +775,10 @@ endmacro()
 # - n/a
 macro(CheckMali)
   if(SDL_MALI)
+    pkg_check_modules(GOU gou)
+    set(CMAKE_REQUIRED_DEFINITIONS "${CMAKE_REQUIRED_DEFINITIONS} ${GOU_CFLAGS}")
+    list(APPEND EXTRA_LIBS ${GOU_LIBRARIES})
+    
     check_c_source_compiles("
         #define LINUX
         #define EGL_API_FB
